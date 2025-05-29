@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Toolbox{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{{ url_for('dashboard') }}">🔧 Toolbox</a>
+
+      <div class="collapse navbar-collapse justify-content-between">
+        <!-- Liens de gauche -->
+        <ul class="navbar-nav me-auto">
+          {% if session.get('user') %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">🏠 Dashboard</a></li>
+            
+            <!-- ✅ MODULES PRINCIPAUX -->
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('module_decouverte') }}">🌐 Découverte</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('enumerate') }}">🔍 Énumération</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('vulnerabilities') }}">⚠️ Vulnérabilités</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('openvas_scan') }}">🔒 OpenVAS</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('exploit') }}">💥 Exploitation</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('post_exploit') }}">⚡ Post-exploit</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('sqlmap_scan') }}">💉 SQLmap</a></li>
+            
+            <!-- ✅ NOUVEAU : MONITORING ET OUTILS -->
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                📊 Monitoring
+              </a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('tasks_dashboard') }}">📊 Dashboard Tâches</a></li>
+                <li><a class="dropdown-item" href="http://localhost:5555" target="_blank">🌸 Flower (Celery)</a></li>
+                <li><a class="dropdown-item" href="http://localhost:9000" target="_blank">📋 Graylog (Logs)</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{{ url_for('test_celery') }}">🧪 Test Celery</a></li>
+              </ul>
+            </li>
+            
+            <!-- ✅ OUTILS ET CONFIG -->
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                🔧 Outils
+              </a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('plugins') }}">🔌 Plugins</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('report') }}">📄 Reporting</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="https://localhost:9392" target="_blank">🔒 Interface OpenVAS</a></li>
+                <li><a class="dropdown-item" href="http://localhost:8080" target="_blank">🎯 DVWA (Test)</a></li>
+              </ul>
+            </li>
+
+          {% endif %}
+        </ul>
+
+        <!-- Menu utilisateur à droite -->
+        <ul class="navbar-nav">
+          {% if session.get('user') %}
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                👤 {{ session['user'] }} ({{ session['role'] }})
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end">
+                {% if session.get('role') == 'admin' %}
+                  <li><a class="dropdown-item" href="{{ url_for('register') }}">👤 Créer utilisateur</a></li>
+                  <li><a class="dropdown-item" href="{{ url_for('users') }}">👥 Liste des utilisateurs</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                {% endif %}
+                <li><a class="dropdown-item" href="{{ url_for('logout') }}">🚪 Déconnexion</a></li>
+              </ul>
+            </li>
+          {% else %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">🔑 Login</a></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <!-- Messages flash globaux -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-messages">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Contenu principal -->
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-dark text-light text-center py-3 mt-5">
+    <div class="container">
+      <p class="mb-0">
+        🔧 <strong>Toolbox Cybersécurité</strong> | 
+        Mastère ESI 2025 | 
+        <small class="text-muted">
+          🐳 Docker | ⚡ Celery | 🌸 Flower | 📊 Graylog
+        </small>
+      </p>
+    </div>
+  </footer>
+
+  <!-- Bootstrap JS for dropdown and alerts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <!-- Auto-hide flash messages -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      // Auto-hide flash messages after 4 seconds
+      setTimeout(function () {
+        document.querySelectorAll('.alert:not(.alert-permanent)').forEach(function(el) {
+          if (el.classList.contains('show')) {
+            el.style.transition = 'opacity 0.5s';
+            el.style.opacity = '0';
+            setTimeout(function() { 
+              if (el.parentNode) {
+                el.remove();
+              }
+            }, 500);
+          }
+        });
+      }, 4000);
+      
+      // Améliorer l'UX des dropdowns
+      const dropdowns = document.querySelectorAll('.dropdown-toggle');
+      dropdowns.forEach(dropdown => {
+        dropdown.addEventListener('click', function(e) {
+          // Fermer les autres dropdowns ouverts
+          dropdowns.forEach(other => {
+            if (other !== dropdown) {
+              const otherDropdown = bootstrap.Dropdown.getInstance(other);
+              if (otherDropdown) {
+                otherDropdown.hide();
+              }
+            }
+          });
+        });
+      });
+    });
+
+    // Fonction utilitaire pour notifications personnalisées
+    function showNotification(message, type = 'info', duration = 3000) {
+      const notification = document.createElement('div');
+      notification.className = `alert alert-${type} position-fixed`;
+      notification.style.cssText = `
+        top: 20px; right: 20px; z-index: 9999; min-width: 300px;
+        animation: slideInRight 0.3s ease-out;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      `;
+      notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close float-end" onclick="this.parentElement.remove()"></button>
+      `;
+      
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.style.animation = 'slideOutRight 0.3s ease-in';
+          setTimeout(() => notification.remove(), 300);
+        }
+      }, duration);
+    }
+
+    // Fonction pour confirmer les actions dangereuses
+    function confirmAction(message, callback) {
+      if (confirm(`⚠️ ${message}\n\nÊtes-vous sûr de vouloir continuer ?`)) {
+        callback();
+      }
+    }
+  </script>
+
+  <!-- Styles pour animations et améliorations UX -->
+  <style>
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes slideOutRight {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+
+    /* Améliorer l'apparence des dropdowns */
+    .dropdown-menu {
+      border: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      border-radius: 8px;
+    }
+
+    .dropdown-item {
+      padding: 0.5rem 1rem;
+      transition: background-color 0.15s ease-in-out;
+    }
+
+    .dropdown-item:hover {
+      background-color: #f8f9fa;
+    }
+
+    /* Style pour les badges dans la navbar */
+    .navbar-nav .nav-link {
+      transition: color 0.15s ease-in-out;
+    }
+
+    .navbar-nav .nav-link:hover {
+      color: #ffc107 !important;
+    }
+
+    /* Style pour le footer */
+    footer {
+      margin-top: auto;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      flex: 1;
+    }
+
+    /* Améliorer l'apparence des alertes */
+    .alert {
+      border: none;
+      border-radius: 8px;
+    }
+
+    /* Style pour les cartes */
+    .card {
+      border: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border-radius: 8px;
+    }
+
+    .card-header {
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      border-radius: 8px 8px 0 0 !important;
+    }
+  </style>
+</body>
+</html>

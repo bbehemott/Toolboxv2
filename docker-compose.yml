@@ -1,0 +1,232 @@
+# docker-compose.yml - Toolbox v2 avec architecture propre
+
+services:
+  # ===== REDIS (Broker Celery) =====
+  redis:
+    image: redis:7-alpine
+    container_name: toolbox-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - toolbox-network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===== ELASTICSEARCH (Logging) =====
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
+    container_name: toolbox-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    mem_limit: 1g
+    networks:
+      - toolbox-network
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+
+  # ===== MONGODB (Graylog) =====
+  mongo:
+    image: mongo:4.2
+    container_name: toolbox-mongo
+    networks:
+      - toolbox-network
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+  # ===== GRAYLOG (Logging centralisé) =====
+  graylog:
+    image: graylog/graylog:4.2
+    container_name: toolbox-graylog
+    environment:
+      GRAYLOG_PASSWORD_SECRET: "toolboxsecretkey2025changeInProduction"
+      GRAYLOG_ROOT_PASSWORD_SHA2: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"  # admin
+      GRAYLOG_HTTP_EXTERNAL_URI: "http://127.0.0.1:9000/"
+    depends_on:
+      - mongo
+      - elasticsearch
+    networks:
+      - toolbox-network
+    ports:
+      - "9000:9000"       # Interface web Graylog
+      - "12201:12201/udp" # GELF UDP input
+    volumes:
+      - graylog_data:/usr/share/graylog/data
+    restart: unless-stopped
+
+  # ===== OPENVAS (Scanner de vulnérabilités) =====
+  openvas:
+    image: mikesplain/openvas:latest
+    container_name: toolbox-openvas
+    ports:
+      - "9392:9392"   # Interface web OpenVAS
+      - "9390:9390"   # Port OMP
+    environment:
+      - OMP_USERNAME=admin
+      - OMP_PASSWORD=admin
+    volumes:
+      - openvas_data:/var/lib/openvas
+    networks:
+      - toolbox-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "omp", "--ping"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 300s
+
+  # ===== APPLICATION PRINCIPALE =====
+  toolbox-app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: toolbox-app
+    privileged: true  # Nécessaire pour Nmap et sockets bruts
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=true
+      - FLASK_SECRET_KEY=dev-secret-change-in-production
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OPENVAS_HOST=openvas
+      - OPENVAS_PORT=9390
+      - OPENVAS_USER=admin
+      - OPENVAS_PASSWORD=admin
+      - GRAYLOG_HOST=graylog
+      - GRAYLOG_PORT=12201
+    ports:
+      - "5000:5000"
+    networks:
+      - toolbox-network
+    depends_on:
+      - redis
+      - graylog
+      - openvas
+    restart: unless-stopped
+    logging:
+      driver: "gelf"
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: "toolbox-app"
+
+  # ===== CELERY WORKER =====
+  toolbox-worker:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: toolbox-worker
+    privileged: true  # Nécessaire pour les outils de scan
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OPENVAS_HOST=openvas
+      - OPENVAS_PORT=9390
+      - OPENVAS_USER=admin
+      - OPENVAS_PASSWORD=admin
+    networks:
+      - toolbox-network
+    depends_on:
+      - redis
+      - openvas
+    command: celery -A celery_app worker --loglevel=info --concurrency=4
+    restart: unless-stopped
+    logging:
+      driver: "gelf"
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: "toolbox-worker"
+
+  # ===== CELERY FLOWER (Monitoring) =====
+  toolbox-flower:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: toolbox-flower
+    volumes:
+      - ./backend:/app
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    networks:
+      - toolbox-network
+    depends_on:
+      - redis
+    command: celery -A celery_app flower --port=5555 --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    restart: unless-stopped
+
+  # ===== CIBLES DE TEST =====
+  # DVWA (Application web vulnérable)
+  dvwa:
+    image: vulnerables/web-dvwa
+    container_name: toolbox-dvwa
+    ports:
+      - "8080:80"
+    networks:
+      - toolbox-network
+    environment:
+      - MYSQL_HOSTNAME=dvwa-mysql
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USERNAME=root
+      - MYSQL_PASSWORD=dvwa_password
+    depends_on:
+      - dvwa-mysql
+    restart: unless-stopped
+
+  # MySQL pour DVWA
+  dvwa-mysql:
+    image: mysql:5.7
+    container_name: toolbox-dvwa-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=dvwa_password
+      - MYSQL_DATABASE=dvwa
+    networks:
+      - toolbox-network
+    volumes:
+      - dvwa_mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
+# ===== VOLUMES =====
+volumes:
+  redis_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  graylog_data:
+    driver: local
+  openvas_data:
+    driver: local
+  dvwa_mysql_data:
+    driver: local
+
+# ===== RÉSEAU =====
+networks:
+  toolbox-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

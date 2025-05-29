@@ -1,0 +1,29 @@
+# ===== FRAMEWORK WEB =====
+Flask==2.3.2
+Werkzeug==2.3.6
+
+# ===== SÉCURITÉ ET AUTHENTIFICATION =====
+bcrypt==4.0.1
+
+# ===== BASE DE DONNÉES =====
+# SQLite est inclus avec Python, pas besoin d'installation séparée
+
+# ===== CELERY ET TÂCHES ASYNCHRONES =====
+celery==5.3.1
+redis==4.6.0
+flower==2.0.1
+
+# ===== LOGGING ET MONITORING =====
+pygelf==0.2.0
+
+# ===== OUTILS DE SÉCURITÉ ET PARSING =====
+python-gvm==22.9.0
+lxml==4.9.3
+requests==2.31.0
+
+# ===== UTILITAIRES =====
+psutil==5.9.5
+
+# ===== DÉVELOPPEMENT (optionnel) =====
+pytest==7.4.0
+pytest-flask==1.2.0
