@@ -2,6 +2,7 @@ from flask import Blueprint, request, render_template, session, current_app, jso
 from auth import login_required, pentester_required
 from services.scan_orchestrator import ScanOrchestrator
 import logging
+import time
 
 logger = logging.getLogger('toolbox.scans')
 

@@ -86,24 +86,26 @@ def setup_logging(app, app_config):
         logger.addHandler(file_handler)
         logger.setLevel(getattr(logging, app_config.LOG_LEVEL))
 
+
 def register_blueprints(app):
     """Enregistre tous les blueprints (routes)"""
     
-    # Routes principales
+    # Routes principales (PAS de préfixe)
     from api.main import main_bp
     app.register_blueprint(main_bp)
     
-    # API modules
+    # API modules (préfixe /modules pour compatibilité templates)
     from api.modules import modules_bp
-    app.register_blueprint(modules_bp, url_prefix='/api/modules')
+    app.register_blueprint(modules_bp, url_prefix='/modules')
     
-    # API tâches
+    # API tâches (préfixe /tasks pour compatibilité templates) 
     from api.tasks import tasks_bp
-    app.register_blueprint(tasks_bp, url_prefix='/api/tasks')
+    app.register_blueprint(tasks_bp, url_prefix='/tasks')
     
-    # API scans
+    # API scans (préfixe /scans pour compatibilité templates)
     from api.scans import scans_bp
-    app.register_blueprint(scans_bp, url_prefix='/api/scans')
+    app.register_blueprint(scans_bp, url_prefix='/scans')
+
 
 def register_error_handlers(app):
     """Enregistre les gestionnaires d'erreur"""

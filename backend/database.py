@@ -306,59 +306,59 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()]
 
 
-def update_scan_status(self, scan_id: int, status: str, progress: int = None,
-                      result_summary: str = None) -> bool:
-    """Met à jour le statut d'un scan OpenVAS"""
-    try:
+
+    def update_scan_status(self, scan_id: int, status: str, progress: int = None,
+                          result_summary: str = None) -> bool:
+        """Met à jour le statut d'un scan OpenVAS"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                updates = ['status = ?']
+                params = [status]
+                
+                if progress is not None:
+                    updates.append('progress = ?')
+                    params.append(progress)
+                
+                if result_summary:
+                    updates.append('result_summary = ?')
+                    params.append(result_summary)
+                
+                if status in ['completed', 'failed', 'stopped']:
+                    updates.append('completed_at = CURRENT_TIMESTAMP')
+                
+                query = f"UPDATE scans SET {', '.join(updates)} WHERE id = ?"
+                params.append(scan_id)
+                
+                cursor.execute(query, params)
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Erreur mise à jour scan {scan_id}: {e}")
+            return False
+
+    def hide_scan(self, scan_id: int) -> bool:
+        """Masque un scan"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            
-            updates = ['status = ?']
-            params = [status]
-            
-            if progress is not None:
-                updates.append('progress = ?')
-                params.append(progress)
-            
-            if result_summary:
-                updates.append('result_summary = ?')
-                params.append(result_summary)
-            
-            if status in ['completed', 'failed', 'stopped']:
-                updates.append('completed_at = CURRENT_TIMESTAMP')
-            
-            query = f"UPDATE scans SET {', '.join(updates)} WHERE id = ?"
-            params.append(scan_id)
-            
-            cursor.execute(query, params)
+            cursor.execute('UPDATE scans SET hidden = 1 WHERE id = ?', (scan_id,))
             conn.commit()
             return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Erreur mise à jour scan {scan_id}: {e}")
-        return False
 
-def hide_scan(self, scan_id: int) -> bool:
-    """Masque un scan"""
-    with self.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('UPDATE scans SET hidden = 1 WHERE id = ?', (scan_id,))
-        conn.commit()
-        return cursor.rowcount > 0
-
-def get_task_by_id(self, task_id: str) -> Optional[Dict]:
-    """Récupère une tâche par son ID"""
-    with self.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT t.*, u.username
-            FROM tasks t
-            LEFT JOIN users u ON t.user_id = u.id
-            WHERE t.task_id = ?
-        ''', (task_id,))
-        
-        row = cursor.fetchone()
-        return dict(row) if row else None
-
+    def get_task_by_id(self, task_id: str) -> Optional[Dict]:
+        """Récupère une tâche par son ID"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT t.*, u.username
+                FROM tasks t
+                LEFT JOIN users u ON t.user_id = u.id
+                WHERE t.task_id = ?
+            ''', (task_id,))
+            
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
 
     
