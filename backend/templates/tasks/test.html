@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Test Celery{% endblock %}
+{% block content %}
+
+<h2>🧪 Test du système Celery</h2>
+<p class="text-muted">Vérifier que Celery + Redis fonctionnent correctement</p>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="card mb-4">
+  <div class="card-header">
+    <h5>⚡ Lancer un test Celery</h5>
+  </div>
+  <div class="card-body">
+    <form method="post">
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label for="duration" class="form-label">Durée du test (secondes)</label>
+          <input type="number" class="form-control" name="duration" id="duration" 
+                 value="10" min="5" max="60" required>
+          <div class="form-text">
+            <small>Le test va durer X secondes et mettre à jour sa progression</small>
+          </div>
+        </div>
+      </div>
+      
+      <div class="d-grid gap-2 d-md-flex">
+        <button type="submit" class="btn btn-primary btn-lg">
+          🚀 Lancer le test
+        </button>
+        <a href="{{ url_for('tasks_dashboard') }}" class="btn btn-outline-info">
+          📊 Dashboard tâches
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Info sur le test -->
+<div class="card">
+  <div class="card-header">
+    <h6>ℹ️ À propos du test Celery</h6>
+  </div>
+  <div class="card-body">
+    <p><strong>Ce test va vérifier :</strong></p>
+    <ul>
+      <li>✅ <strong>Connexion Redis</strong> - Le broker de messages fonctionne</li>
+      <li>✅ <strong>Worker Celery</strong> - Un worker traite la tâche</li>
+      <li>✅ <strong>Progression temps réel</strong> - Mise à jour du statut</li>
+      <li>✅ <strong>Interface monitoring</strong> - Page de suivi fonctionnelle</li>
+    </ul>
+    
+    <div class="alert alert-info">
+      <strong>🔍 Diagnostic :</strong><br>
+      • Si ça marche → Celery + Redis OK !<br>
+      • Si ça bloque → Problème de configuration<br>
+      • Page blanche → Template manquant
+    </div>
+  </div>
+</div>
+
+{% endblock %}

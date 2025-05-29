@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Toolbox{% endblock %}
+{% block content %}
+
+<div class="row mb-4">
+  <div class="col-md-12">
+    <h2>🏠 Dashboard Toolbox</h2>
+    <p class="text-muted">Tableau de bord principal - Vue d'ensemble de vos activités</p>
+  </div>
+</div>
+
+<!-- Statistiques -->
+<div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card bg-primary text-white">
+      <div class="card-body">
+        <h5>{{ stats.get('tasks', {}).get('completed', 0) }}</h5>
+        <small>Tâches terminées</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card bg-info text-white">
+      <div class="card-body">
+        <h5>{{ stats.get('tasks', {}).get('running', 0) }}</h5>
+        <small>Tâches en cours</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card bg-success text-white">
+      <div class="card-body">
+        <h5>{{ stats.get('scans', {}).get('completed', 0) }}</h5>
+        <small>Scans terminés</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card bg-warning text-white">
+      <div class="card-body">
+        <h5>{{ stats.get('active_users', 0) }}</h5>
+        <small>Utilisateurs actifs</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modules principaux -->
+<div class="row mb-4">
+  <div class="col-md-12">
+    <h4>🔧 Modules disponibles</h4>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">🌐 Découverte Réseau</h5>
+        <p class="card-text">Cartographie et identification des hôtes actifs</p>
+        <a href="{{ url_for('modules.network_discovery') }}" class="btn btn-primary">Lancer</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">🔍 Scan Nmap</h5>
+        <p class="card-text">Scan de ports et énumération de services</p>
+        <a href="{{ url_for('modules.nmap_scan') }}" class="btn btn-primary">Lancer</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">🔒 OpenVAS</h5>
+        <p class="card-text">Scan complet de vulnérabilités</p>
+        <a href="{{ url_for('scans.openvas_page') }}" class="btn btn-danger">Lancer</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Activité récente -->
+<div class="row">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5>📊 Tâches récentes</h5>
+      </div>
+      <div class="card-body">
+        {% if recent_tasks %}
+          <div class="list-group">
+            {% for task in recent_tasks %}
+            <div class="list-group-item">
+              <div class="d-flex w-100 justify-content-between">
+                <h6 class="mb-1">{{ task.task_name }}</h6>
+                <small>{{ task.started_at }}</small>
+              </div>
+              <p class="mb-1">{{ task.target or 'N/A' }}</p>
+              <small class="badge bg-{{ 'success' if task.status == 'completed' else 'primary' if task.status == 'running' else 'danger' }}">
+                {{ task.status }}
+              </small>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted">Aucune tâche récente</p>
+        {% endif %}
+        <div class="mt-3">
+          <a href="{{ url_for('tasks.tasks_dashboard') }}" class="btn btn-outline-primary btn-sm">Voir toutes les tâches</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5>🔒 Scans récents</h5>
+      </div>
+      <div class="card-body">
+        {% if recent_scans %}
+          <div class="list-group">
+            {% for scan in recent_scans %}
+            <div class="list-group-item">
+              <div class="d-flex w-100 justify-content-between">
+                <h6 class="mb-1">{{ scan.scan_name }}</h6>
+                <small>{{ scan.started_at }}</small>
+              </div>
+              <p class="mb-1">{{ scan.target_ip }}</p>
+              <small class="badge bg-{{ 'success' if scan.status == 'completed' else 'primary' if scan.status == 'running' else 'danger' }}">
+                {{ scan.status }}
+              </small>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted">Aucun scan récent</p>
+        {% endif %}
+        <div class="mt-3">
+          <a href="{{ url_for('scans.openvas_page') }}" class="btn btn-outline-danger btn-sm">Voir tous les scans</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

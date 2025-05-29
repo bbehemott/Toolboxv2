@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+{% block title %}Dashboard des Tâches{% endblock %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2>📊 Dashboard des Tâches Celery</h2>
+    <p class="text-muted">Monitoring global de toutes les tâches asynchrones</p>
+
+    <!-- Actions rapides - AVEC BOUTON PURGE À DROITE -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between">
+                <button class="btn btn-outline-primary" onclick="refreshDashboard()">
+                    🔄 Actualiser
+                </button>
+                <button class="btn btn-outline-danger" onclick="purgeAllTasks()" title="Supprimer toutes les tâches de l'historique">
+                    🗑️ Purger l'historique
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques globales - AVEC VRAIES DONNÉES -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center border-info">
+                <div class="card-body">
+                    <h4 class="card-title text-info" id="total-active">-</h4>
+                    <p class="card-text">⚡ Tâches actives</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-warning">
+                <div class="card-body">
+                    <h4 class="card-title text-warning" id="total-scheduled">-</h4>
+                    <p class="card-text">⏰ En attente</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-success">
+                <div class="card-body">
+                    <h4 class="card-title text-success" id="total-completed">-</h4>
+                    <p class="card-text">✅ Terminées</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-danger">
+                <div class="card-body">
+                    <h4 class="card-title text-danger" id="total-failed">-</h4>
+                    <p class="card-text">❌ Échouées</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tâches actives -->
+    <div class="card mb-4" id="active-tasks-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>⚡ Tâches en cours d'exécution</h5>
+            <span class="badge bg-info" id="active-count">-</span>
+        </div>
+        <div class="card-body">
+            <div id="active-tasks-list">
+                <div class="text-muted text-center py-4">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Chargement des tâches actives...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historique récent -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>📋 Historique récent</h5>
+            <span class="badge bg-secondary" id="history-count">{{ recent_tasks|length if recent_tasks else 0 }}</span>
+        </div>
+        <div class="card-body">
+            <div id="recent-tasks-list">
+                {% if recent_tasks and recent_tasks|length > 0 %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Nom</th>
+                                    <th>Cible</th>
+                                    <th>Statut</th>
+                                    <th>Utilisateur</th>
+                                    <th>Démarré</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for task in recent_tasks %}
+                                <tr class="{% if task.state == 'SUCCESS' %}table-success{% elif task.state == 'FAILURE' %}table-danger{% else %}table-secondary{% endif %}">
+                                    <td>
+                                        <span class="badge bg-{% if task.state == 'SUCCESS' %}success{% elif task.state == 'FAILURE' %}danger{% else %}secondary{% endif %}">
+                                            {{ task.type if task.type else 'Tâche' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <strong>{{ task.scan_name if task.scan_name else task.name }}</strong>
+                                    </td>
+                                    <td>
+                                        <small>{{ task.target }}</small>
+                                    </td>
+                                    <td>
+                                        {% if task.state == 'SUCCESS' %}
+                                            <span class="text-success">✅ {{ task.status }}</span>
+                                        {% elif task.state == 'FAILURE' %}
+                                            <span class="text-danger">❌ {{ task.status }}</span>
+                                        {% else %}
+                                            <span class="text-secondary">⏳ {{ task.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ task.user if task.user else 'Système' }}</small>
+                                    </td>
+                                    <td>
+                                        <small>{{ task.started_at }}</small>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            {% if task.id %}
+                                                <button class="btn btn-outline-warning" 
+                                                        onclick="hideTaskFromHistory('{{ task.id }}', this)" 
+                                                        title="Supprimer de l'historique">
+                                                    🗑️
+                                                </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        📭 Aucune tâche dans l'historique récent
+                        <br><small>Les tâches terminées apparaîtront ici</small>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let refreshInterval;
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Dashboard chargé - Initialisation...');
+    
+    // Test de connectivité
+    fetch('/api/tasks/real-stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('✅ Connectivité API confirmée');
+            } else {
+                console.warn('⚠️ API répond mais avec erreur:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Problème connectivité API:', error);
+            showNotification('Problème de connexion avec le serveur', 'error');
+        });
+    
+    // Démarrer le dashboard avec auto-refresh
+    refreshDashboard();
+    startAutoRefresh();
+});
+
+function startAutoRefresh() {
+    refreshInterval = setInterval(refreshDashboard, 10000);
+    console.log('🔄 Auto-refresh activé (10s)');
+}
+
+function stopAutoRefresh() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+        console.log('⏹️ Auto-refresh arrêté');
+    }
+}
+
+function hideTaskFromHistory(taskId) {
+    console.log(`🗑️ Tentative masquage: ${taskId}`);
+    
+    if (!confirm('Voulez-vous vraiment masquer cette tâche de l\'historique ?')) {
+        return;
+    }
+    
+    // Afficher le loading
+    const button = event.target.closest('button');
+    const originalHtml = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    button.disabled = true;
+    
+    fetch(`/api/task/${taskId}/hide-from-history`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        console.log(`📡 Réponse HTTP: ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        console.log('📊 Données reçues:', data);
+        
+        if (data.success) {
+            showNotification(data.message || 'Tâche masquée avec succès', 'success');
+            
+            // Supprimer visuellement l'élément
+            const taskElement = button.closest('.task-item, .border, .mb-2');
+            if (taskElement) {
+                taskElement.style.transition = 'opacity 0.3s';
+                taskElement.style.opacity = '0';
+                setTimeout(() => {
+                    taskElement.remove();
+                    updateTaskCounts();
+                }, 300);
+            } else {
+                // Fallback: recharger la page
+                setTimeout(() => window.location.reload(), 1000);
+            }
+        } else {
+            console.error('❌ Erreur serveur:', data.error);
+            showNotification(`Erreur: ${data.error}`, 'error');
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('❌ Erreur réseau:', error);
+        showNotification('Erreur de connexion au serveur', 'error');
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+    });
+}
+
+// Fonction corrigée pour purger l'historique
+function purgeTaskHistory() {
+    console.log('🗑️ Tentative purge historique');
+    
+    if (!confirm('⚠️ ATTENTION: Voulez-vous vraiment masquer TOUTES les tâches terminées de l\'historique ?\n\nCette action est irréversible.')) {
+        return;
+    }
+    
+    // Afficher le loading sur le bouton
+    const purgeButton = document.querySelector('button[onclick="purgeTaskHistory()"]');
+    if (purgeButton) {
+        purgeButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Purge en cours...';
+        purgeButton.disabled = true;
+    }
+    
+    fetch('/api/tasks/purge-history', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        console.log(`📡 Réponse purge: ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        console.log('📊 Résultat purge:', data);
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            
+            // Recharger la page après 1 seconde
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            console.error('❌ Erreur purge:', data.error);
+            showNotification(`Erreur: ${data.error}`, 'error');
+            
+            if (purgeButton) {
+                purgeButton.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Purger l\'historique';
+                purgeButton.disabled = false;
+            }
+        }
+    })
+    .catch(error => {
+        console.error('❌ Erreur réseau purge:', error);
+        showNotification('Erreur de connexion', 'error');
+        
+        if (purgeButton) {
+            purgeButton.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Purger l\'historique';
+            purgeButton.disabled = false;
+        }
+    });
+}
+
+// Fonction pour afficher les notifications
+function showNotification(message, type) {
+    console.log(`📢 Notification: ${message} (${type})`);
+    
+    // Supprimer les anciennes notifications
+    const existingNotifications = document.querySelectorAll('.notification-custom');
+    existingNotifications.forEach(n => n.remove());
+    
+    // Créer nouvelle notification
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed notification-custom`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 1060; min-width: 350px; max-width: 500px;';
+    notification.innerHTML = `
+        <strong>${type === 'success' ? '✅' : '❌'}</strong> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-suppression
+    setTimeout(() => {
+        if (notification && notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// Fonction pour mettre à jour les compteurs
+function updateTaskCounts() {
+    // Recompter les tâches visibles
+    const visibleTasks = document.querySelectorAll('.task-item:not([style*="display: none"])').length;
+    const historyCountElement = document.querySelector('#historyCount');
+    if (historyCountElement) {
+        historyCountElement.textContent = visibleTasks;
+    }
+}
+
+// Test de connectivité au démarrage
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Dashboard chargé - Test connectivité...');
+    
+    fetch('/api/tasks/real-stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('✅ Connectivité API confirmée');
+            } else {
+                console.warn('⚠️ API répond mais avec erreur:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Problème connectivité API:', error);
+            showNotification('Problème de connexion avec le serveur', 'error');
+        });
+});
+
+
+</script>
+
+{% endblock %}

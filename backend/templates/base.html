@@ -8,34 +8,34 @@
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container-fluid">
-      <a class="navbar-brand" href="{{ url_for('dashboard') }}">🔧 Toolbox</a>
+      <a class="navbar-brand" href="{{ url_for('main.dashboard') }}">🔧 Toolbox</a>
 
       <div class="collapse navbar-collapse justify-content-between">
         <!-- Liens de gauche -->
         <ul class="navbar-nav me-auto">
-          {% if session.get('user') %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">🏠 Dashboard</a></li>
+          {% if current_user and current_user.is_authenticated %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">🏠 Dashboard</a></li>
             
-            <!-- ✅ MODULES PRINCIPAUX -->
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('module_decouverte') }}">🌐 Découverte</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('enumerate') }}">🔍 Énumération</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('vulnerabilities') }}">⚠️ Vulnérabilités</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('openvas_scan') }}">🔒 OpenVAS</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('exploit') }}">💥 Exploitation</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('post_exploit') }}">⚡ Post-exploit</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('sqlmap_scan') }}">💉 SQLmap</a></li>
+            <!-- ✅ MODULES PRINCIPAUX - CORRIGÉS -->
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('modules.network_discovery') }}">🌐 Découverte</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('modules.nmap_scan') }}">🔍 Énumération</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('modules.vulnerability_scan') }}">⚠️ Vulnérabilités</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('scans.openvas_page') }}">🔒 OpenVAS</a></li>
+            <li class="nav-item"><a class="nav-link" href="#">💥 Exploitation</a></li>
+            <li class="nav-item"><a class="nav-link" href="#">⚡ Post-exploit</a></li>
+            <li class="nav-item"><a class="nav-link" href="#">💉 SQLmap</a></li>
             
-            <!-- ✅ NOUVEAU : MONITORING ET OUTILS -->
+            <!-- ✅ MONITORING - CORRIGÉ -->
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                 📊 Monitoring
               </a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('tasks_dashboard') }}">📊 Dashboard Tâches</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('tasks.tasks_dashboard') }}">📊 Dashboard Tâches</a></li>
                 <li><a class="dropdown-item" href="http://localhost:5555" target="_blank">🌸 Flower (Celery)</a></li>
                 <li><a class="dropdown-item" href="http://localhost:9000" target="_blank">📋 Graylog (Logs)</a></li>
                 <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{{ url_for('test_celery') }}">🧪 Test Celery</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('tasks.test_task_page') }}">🧪 Test Celery</a></li>
               </ul>
             </li>
             
@@ -45,8 +45,8 @@
                 🔧 Outils
               </a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('plugins') }}">🔌 Plugins</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('report') }}">📄 Reporting</a></li>
+                <li><a class="dropdown-item" href="#">🔌 Plugins</a></li>
+                <li><a class="dropdown-item" href="#">📄 Reporting</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="https://localhost:9392" target="_blank">🔒 Interface OpenVAS</a></li>
                 <li><a class="dropdown-item" href="http://localhost:8080" target="_blank">🎯 DVWA (Test)</a></li>
@@ -58,22 +58,22 @@
 
         <!-- Menu utilisateur à droite -->
         <ul class="navbar-nav">
-          {% if session.get('user') %}
+          {% if current_user and current_user.is_authenticated %}
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                👤 {{ session['user'] }} ({{ session['role'] }})
+                👤 {{ current_user.username }} ({{ current_user.role }})
               </a>
               <ul class="dropdown-menu dropdown-menu-end">
-                {% if session.get('role') == 'admin' %}
-                  <li><a class="dropdown-item" href="{{ url_for('register') }}">👤 Créer utilisateur</a></li>
-                  <li><a class="dropdown-item" href="{{ url_for('users') }}">👥 Liste des utilisateurs</a></li>
+                {% if current_user.role == 'admin' %}
+                  <li><a class="dropdown-item" href="{{ url_for('main.create_user') }}">👤 Créer utilisateur</a></li>
+                  <li><a class="dropdown-item" href="{{ url_for('main.users_list') }}">👥 Liste des utilisateurs</a></li>
                   <li><hr class="dropdown-divider"></li>
                 {% endif %}
-                <li><a class="dropdown-item" href="{{ url_for('logout') }}">🚪 Déconnexion</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.logout') }}">🚪 Déconnexion</a></li>
               </ul>
             </li>
           {% else %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">🔑 Login</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('main.login') }}">🔑 Login</a></li>
           {% endif %}
         </ul>
       </div>

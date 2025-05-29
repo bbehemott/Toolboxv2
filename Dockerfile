@@ -57,7 +57,7 @@ RUN curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/conf
 WORKDIR /app
 
 # Copier les requirements d'abord (pour cache Docker)
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Installer les dépendances Python
 RUN pip install --no-cache-dir --upgrade pip \

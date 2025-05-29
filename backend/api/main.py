@@ -58,14 +58,14 @@ def dashboard():
         recent_tasks = current_app.db.get_tasks(user_id=user_id, limit=5)
         recent_scans = current_app.db.get_scans(user_id=user_id, limit=5)
         
-        return render_template('dashboard.html', 
+        return render_template('dashboard/dashboard.html', 
                              stats=stats,
                              recent_tasks=recent_tasks,
                              recent_scans=recent_scans)
     except Exception as e:
         logger.error(f"Erreur dashboard: {e}")
         flash('Erreur lors du chargement du dashboard', 'danger')
-        return render_template('dashboard.html', stats={}, recent_tasks=[], recent_scans=[])
+        return render_template('dashboard/dashboard.html', stats={}, recent_tasks=[], recent_scans=[])
 
 @main_bp.route('/profile')
 @login_required

@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+{% block title %}Monitoring de tâche{% endblock %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2>⚡ Monitoring de tâche Celery</h2>
+    <p class="text-muted">ID de tâche: <code>{{ task_id }}</code></p>
+    
+    <!-- Statut principal -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 id="task-title">📊 Statut de la tâche</h5>
+            <div>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshStatus()">
+                    🔄 Actualiser
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="cancelTask()" id="cancel-btn">
+                    🛑 Annuler
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            
+            <!-- Barre de progression -->
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <span id="status-text">Chargement du statut...</span>
+                    <span id="progress-text">0%</span>
+                </div>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         id="progress-bar" 
+                         role="progressbar" 
+                         style="width: 0%">
+                        0%
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Informations détaillées -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card border-info">
+                        <div class="card-body">
+                            <h6 class="card-title">ℹ️ Informations</h6>
+                            <div id="task-info">
+                                <p><strong>État:</strong> <span id="task-state" class="badge bg-secondary">PENDING</span></p>
+                                <p><strong>Cible:</strong> <span id="task-target">-</span></p>
+                                <p><strong>Phase:</strong> <span id="task-phase">-</span></p>
+                                <p><strong>Durée:</strong> <span id="task-duration">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <h6 class="card-title">⏰ Timestamps</h6>
+                            <div id="task-timestamps">
+                                <p><strong>Démarrage:</strong> <span id="task-started">-</span></p>
+                                <p><strong>Dernière MAJ:</strong> <span id="task-updated">-</span></p>
+                                <p><strong>Terminé:</strong> <span id="task-completed">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ✅ RÉSULTATS DÉCOUVERTE RÉSEAU (affiché seulement si terminé) -->
+            <div id="discovery-results" style="display: none;" class="mt-4">
+                <div class="card border-success">
+                    <div class="card-header">
+                        <h6>🌐 Résultats de la découverte réseau</h6>
+                    </div>
+                    <div class="card-body" id="discovery-content">
+                        <!-- Contenu des résultats de découverte sera injecté ici -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Résultats autres tâches (JSON) -->
+            <div id="task-results" style="display: none;" class="mt-4">
+                <div class="card border-success">
+                    <div class="card-header">
+                        <h6>✅ Résultats</h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="results-content">
+                            <!-- Contenu des résultats sera injecté ici -->
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-outline-primary" onclick="downloadResults()">
+                                💾 Télécharger les résultats
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Erreurs -->
+            <div id="task-errors" style="display: none;" class="mt-4">
+                <div class="card border-danger">
+                    <div class="card-header">
+                        <h6>❌ Erreur</h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="error-content" class="text-danger">
+                            <!-- Contenu des erreurs sera injecté ici -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <!-- Log en temps réel -->
+    <div class="card">
+        <div class="card-header">
+            <h6>📋 Log des activités</h6>
+        </div>
+        <div class="card-body">
+            <div id="activity-log" style="max-height: 300px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 5px;">
+                <div class="text-muted">En attente du début de la tâche...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Actions rapides -->
+    <div class="mt-4">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">🏠 Retour Dashboard</a>
+        <a href="{{ url_for('tasks_dashboard') }}" class="btn btn-outline-info">📊 Toutes les tâches</a>
+    </div>
+</div>
+
+<script>
+const taskId = '{{ task_id }}';
+let refreshInterval;
+let startTime = new Date();
+let lastState = 'PENDING';
+
+// Démarrer le monitoring automatique
+document.addEventListener('DOMContentLoaded', function() {
+    refreshStatus();
+    startAutoRefresh();
+});
+
+function startAutoRefresh() {
+    refreshInterval = setInterval(refreshStatus, 2000); // Toutes les 2 secondes
+}
+
+function stopAutoRefresh() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+}
+
+function refreshStatus() {
+    fetch(`/api/task/${taskId}/status`)
+        .then(response => response.json())
+        .then(data => {
+            updateUI(data);
+            
+            // Arrêter l'auto-refresh si terminé
+            if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
+                stopAutoRefresh();
+            }
+        })
+        .catch(error => {
+            console.error('Erreur refresh:', error);
+            addLogEntry('❌ Erreur de communication avec le serveur', 'error');
+        });
+}
+
+function updateUI(data) {
+    const state = data.state;
+    const progress = data.progress || 0;
+    const status = data.status || 'État inconnu';
+    
+    // Mettre à jour le titre
+    document.getElementById('task-title').textContent = `📊 Tâche ${state}`;
+    
+    // Mettre à jour la barre de progression
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    
+    progressBar.style.width = `${progress}%`;
+    progressBar.textContent = `${progress}%`;
+    progressText.textContent = `${progress}%`;
+    
+    // Couleur de la barre selon l'état
+    progressBar.className = 'progress-bar progress-bar-striped';
+    if (state === 'SUCCESS') {
+        progressBar.classList.add('bg-success');
+        progressBar.classList.remove('progress-bar-animated');
+    } else if (state === 'FAILURE') {
+        progressBar.classList.add('bg-danger');
+        progressBar.classList.remove('progress-bar-animated');
+    } else if (state === 'PROGRESS') {
+        progressBar.classList.add('bg-warning', 'progress-bar-animated');
+    } else {
+        progressBar.classList.add('bg-info', 'progress-bar-animated');
+    }
+    
+    // Mettre à jour le statut
+    document.getElementById('status-text').textContent = status;
+    
+    // Mettre à jour le badge d'état
+    const stateBadge = document.getElementById('task-state');
+    stateBadge.textContent = state;
+    stateBadge.className = 'badge';
+    
+    if (state === 'SUCCESS') {
+        stateBadge.classList.add('bg-success');
+    } else if (state === 'FAILURE') {
+        stateBadge.classList.add('bg-danger');
+    } else if (state === 'PROGRESS') {
+        stateBadge.classList.add('bg-warning');
+    } else {
+        stateBadge.classList.add('bg-secondary');
+    }
+    
+    // Mettre à jour les informations détaillées
+    if (data.meta) {
+        if (data.meta.target) {
+            document.getElementById('task-target').textContent = data.meta.target;
+        }
+        if (data.meta.phase) {
+            document.getElementById('task-phase').textContent = data.meta.phase;
+        }
+    }
+    
+    // Calculer la durée
+    const duration = Math.floor((new Date() - startTime) / 1000);
+    document.getElementById('task-duration').textContent = `${duration}s`;
+    
+    // Mettre à jour les timestamps
+    document.getElementById('task-updated').textContent = new Date().toLocaleTimeString();
+    
+    // Ajouter au log si changement d'état
+    if (state !== lastState) {
+        addLogEntry(`📊 État: ${lastState} → ${state}`, 'info');
+        lastState = state;
+    }
+    
+    // Ajouter au log les changements de statut
+    if (status && status !== 'État inconnu') {
+        addLogEntry(`ℹ️ ${status}`, 'info');
+    }
+    
+    // ✅ AFFICHER LES RÉSULTATS INTELLIGEMMENT
+    if (state === 'SUCCESS' && data.result) {
+        // Vérifier si c'est une tâche de découverte réseau
+        if (isDiscoveryTask(data.result)) {
+            showDiscoveryResults(data.result);
+        } else {
+            showResults(data.result);
+        }
+    }
+    
+    // Afficher les erreurs si échec
+    if (state === 'FAILURE' && data.error) {
+        showError(data.error);
+    }
+}
+
+// ✅ NOUVELLE FONCTION : Détecter si c'est une tâche de découverte
+function isDiscoveryTask(result) {
+    return result && 
+           result.result_data && 
+           (result.result_data.summary || result.result_data.hosts || result.result_data.module === 'Découverte Réseau');
+}
+
+// ✅ NOUVELLE FONCTION : Afficher les résultats de découverte avec le bel affichage
+function showDiscoveryResults(result) {
+    const discoveryDiv = document.getElementById('discovery-results');
+    const contentDiv = document.getElementById('discovery-content');
+    
+    const resultData = result.result_data;
+    
+    if (resultData && resultData.success) {
+        let html = `
+            <div class="alert alert-success">
+                <h6>✅ Découverte terminée avec succès !</h6>
+                <p><strong>🎯 Réseau :</strong> ${resultData.target}</p>
+            </div>
+        `;
+        
+        // Résumé avec cartes
+        if (resultData.summary) {
+            html += `
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card text-center border-primary">
+                            <div class="card-body">
+                                <h5 class="card-title text-primary">${resultData.summary.total_hosts_found || 0}</h5>
+                                <p class="card-text">🌐 Hôtes trouvés</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center border-success">
+                            <div class="card-body">
+                                <h5 class="card-title text-success">${resultData.summary.hosts_with_open_ports || 0}</h5>
+                                <p class="card-text">🔓 Avec ports ouverts</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center border-info">
+                            <div class="card-body">
+                                <h5 class="card-title text-info">${resultData.summary.total_open_ports || 0}</h5>
+                                <p class="card-text">🔢 Ports ouverts total</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center border-warning">
+                            <div class="card-body">
+                                <h5 class="card-title text-warning">${(resultData.summary.potential_servers || []).length}</h5>
+                                <p class="card-text">🖥️ Serveurs détectés</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Tableau des hôtes détaillés
+        if (resultData.hosts && resultData.hosts.length > 0) {
+            html += `
+                <h6>🔍 Détails des hôtes :</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>IP</th>
+                                <th>Statut</th>
+                                <th style="width: 200px;">Ports ouverts</th>
+                                <th style="width: 250px;">Services</th>
+                                <th style="width: 200px;">OS</th>
+                                <th style="width: 300px;">Infos</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            resultData.hosts.forEach(host => {
+                html += `
+                    <tr>
+                        <td><strong>${host.ip}</strong></td>
+                        <td>
+                            ${host.scan_success ? 
+                                '<span class="badge bg-success">Actif</span>' : 
+                                '<span class="badge bg-danger">Erreur</span>'
+                            }
+                        </td>
+                        <td>
+                            ${host.ports && host.ports.length > 0 ? 
+                                `<div style="max-height: 120px; overflow-y: auto;">
+                                    ${host.ports.map(port => `<span class="badge bg-light text-dark d-block mb-1">${port.port}</span>`).join('')}
+                                </div>` : 
+                                '<span class="text-muted">Aucun</span>'
+                            }
+                        </td>
+                        <td>
+                            ${host.services && host.services.length > 0 ? 
+                                `<div style="max-height: 120px; overflow-y: auto;">
+                                    ${host.services.map(service => `<small class="text-info d-block mb-1">${service.version || service.service}</small>`).join('')}
+                                </div>` : 
+                                '<span class="text-muted">N/A</span>'
+                            }
+                        </td>
+                        <td>
+                            ${host.os ? 
+                                `<div style="max-height: 120px; overflow-y: auto;">
+                                    <small class="text-warning">${host.os}</small>
+                                </div>` : 
+                                '<span class="text-muted">Non détecté</span>'
+                            }
+                        </td>
+                        <td>
+                            ${host.additional_info && host.additional_info.length > 0 ? 
+                                `<div style="max-height: 120px; overflow-y: auto;">
+                                    ${host.additional_info.map(info => `<small class="text-primary d-block mb-1">• ${info}</small>`).join('')}
+                                </div>` : 
+                                '<span class="text-muted">Aucune</span>'
+                            }
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+        
+        // Serveurs potentiels
+        if (resultData.summary && resultData.summary.potential_servers && resultData.summary.potential_servers.length > 0) {
+            html += `
+                <h6>🖥️ Serveurs détectés :</h6>
+                <div class="row">
+            `;
+            
+            resultData.summary.potential_servers.forEach(server => {
+                html += `
+                    <div class="col-md-4 mb-2">
+                        <div class="card border-warning">
+                            <div class="card-body">
+                                <h6 class="card-title">${server.ip}</h6>
+                                <p class="card-text">
+                                    <span class="badge bg-warning text-dark">${server.type}</span><br>
+                                    <small>Ports: ${server.ports.join(', ')}</small>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                </div>
+            `;
+        }
+        
+        contentDiv.innerHTML = html;
+        discoveryDiv.style.display = 'block';
+        
+    } else {
+        // Affichage d'erreur
+        contentDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <h6>❌ Erreur lors de la découverte</h6>
+                <p>${resultData.error || 'Erreur inconnue'}</p>
+            </div>
+        `;
+        discoveryDiv.style.display = 'block';
+    }
+}
+
+function addLogEntry(message, type = 'info') {
+    const logDiv = document.getElementById('activity-log');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    const entry = document.createElement('div');
+    entry.className = `mb-1 text-${type === 'error' ? 'danger' : 'dark'}`;
+    entry.innerHTML = `<small class="text-muted">${timestamp}</small> ${message}`;
+    
+    logDiv.appendChild(entry);
+    logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll
+}
+
+function showResults(result) {
+    const resultsDiv = document.getElementById('task-results');
+    const contentDiv = document.getElementById('results-content');
+    
+    // Formatter les résultats selon le type
+    let resultHtml = '<pre class="bg-light p-3 rounded">' + JSON.stringify(result, null, 2) + '</pre>';
+    
+    contentDiv.innerHTML = resultHtml;
+    resultsDiv.style.display = 'block';
+}
+
+function showError(error) {
+    const errorDiv = document.getElementById('task-errors');
+    const contentDiv = document.getElementById('error-content');
+    
+    contentDiv.innerHTML = `<pre>${error}</pre>`;
+    errorDiv.style.display = 'block';
+}
+
+function cancelTask() {
+    if (confirm('⚠️ Êtes-vous sûr de vouloir annuler cette tâche ?')) {
+        fetch(`/api/task/${taskId}/cancel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                addLogEntry('🛑 Tâche annulée par l\'utilisateur', 'info');
+                document.getElementById('cancel-btn').disabled = true;
+                stopAutoRefresh();
+            } else {
+                addLogEntry('❌ Échec de l\'annulation: ' + data.error, 'error');
+            }
+        })
+        .catch(error => {
+            addLogEntry('❌ Erreur annulation: ' + error, 'error');
+        });
+    }
+}
+
+function downloadResults() {
+    // Créer un blob avec les résultats
+    const results = document.getElementById('results-content').textContent;
+    const blob = new Blob([results], { type: 'application/json' });
+    
+    // Créer un lien de téléchargement
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `task_${taskId}_results.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Nettoyer l'interval quand on quitte la page
+window.addEventListener('beforeunload', function() {
+    stopAutoRefresh();
+});
+</script>
+
+{% endblock %}
