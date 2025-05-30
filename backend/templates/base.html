@@ -16,16 +16,10 @@
           {% if current_user and current_user.is_authenticated %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">🏠 Dashboard</a></li>
             
-            <!-- ✅ MODULES PRINCIPAUX - CORRIGÉS -->
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('modules.network_discovery') }}">🌐 Découverte</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('modules.nmap_scan') }}">🔍 Énumération</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('modules.vulnerability_scan') }}">⚠️ Vulnérabilités</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('scans.openvas_page') }}">🔒 OpenVAS</a></li>
-            <li class="nav-item"><a class="nav-link" href="#">💥 Exploitation</a></li>
-            <li class="nav-item"><a class="nav-link" href="#">⚡ Post-exploit</a></li>
-            <li class="nav-item"><a class="nav-link" href="#">💉 SQLmap</a></li>
+            <!-- MODULES PRINCIPAUX - NETTOYÉS -->
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('modules.network_discovery') }}">🌐 Découverte Réseau</a></li>
             
-            <!-- ✅ MONITORING - CORRIGÉ -->
+            <!-- MONITORING -->
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                 📊 Monitoring
@@ -39,17 +33,16 @@
               </ul>
             </li>
             
-            <!-- ✅ OUTILS ET CONFIG -->
+            <!-- OUTILS ET CONFIG -->
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                 🔧 Outils
               </a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="#">🔌 Plugins</a></li>
-                <li><a class="dropdown-item" href="#">📄 Reporting</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="https://localhost:9392" target="_blank">🔒 Interface OpenVAS</a></li>
                 <li><a class="dropdown-item" href="http://localhost:8080" target="_blank">🎯 DVWA (Test)</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.about') }}">ℹ️ À propos</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.help_page') }}">❓ Aide</a></li>
               </ul>
             </li>
 

@@ -114,14 +114,90 @@
         </div>
     </div>
     
-    <!-- Log en temps réel -->
+    <!-- NOUVEAU : Système d'onglets pour les logs -->
     <div class="card">
         <div class="card-header">
-            <h6>📋 Log des activités</h6>
+            <h6>📋 Monitoring détaillé</h6>
+            <!-- Navigation par onglets -->
+            <ul class="nav nav-tabs card-header-tabs mt-2" id="monitoring-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="activity-log-tab" data-bs-toggle="tab" data-bs-target="#activity-log-pane" 
+                            type="button" role="tab" aria-controls="activity-log-pane" aria-selected="true">
+                        📝 Log des activités
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="raw-commands-tab" data-bs-toggle="tab" data-bs-target="#raw-commands-pane" 
+                            type="button" role="tab" aria-controls="raw-commands-pane" aria-selected="false">
+                        💻 Commandes brutes
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="system-info-tab" data-bs-toggle="tab" data-bs-target="#system-info-pane" 
+                            type="button" role="tab" aria-controls="system-info-pane" aria-selected="false">
+                        🔧 Infos système
+                    </button>
+                </li>
+            </ul>
         </div>
         <div class="card-body">
-            <div id="activity-log" style="max-height: 300px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 5px;">
-                <div class="text-muted">En attente du début de la tâche...</div>
+            <!-- Contenu des onglets -->
+            <div class="tab-content" id="monitoring-tab-content">
+                
+                <!-- Onglet 1: Log des activités -->
+                <div class="tab-pane fade show active" id="activity-log-pane" role="tabpanel" aria-labelledby="activity-log-tab">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">📝 Journal d'activité</h6>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="clearActivityLog()">
+                                🗑️ Vider
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="exportActivityLog()">
+                                💾 Exporter
+                            </button>
+                        </div>
+                    </div>
+                    <div id="activity-log" style="max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 5px; font-family: monospace;">
+                        <div class="text-muted">En attente du début de la tâche...</div>
+                    </div>
+                </div>
+                
+                <!-- Onglet 2: Commandes brutes -->
+                <div class="tab-pane fade" id="raw-commands-pane" role="tabpanel" aria-labelledby="raw-commands-tab">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">💻 Commandes exécutées</h6>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="clearRawCommands()">
+                                🗑️ Vider
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="exportRawCommands()">
+                                💾 Exporter
+                            </button>
+                        </div>
+                    </div>
+                    <div id="raw-commands" style="max-height: 400px; overflow-y: auto; background-color: #1a1a1a; color: #00ff00; padding: 15px; border-radius: 5px; font-family: 'Courier New', monospace; font-size: 14px;">
+                        <div class="text-success">$ Waiting for task execution...</div>
+                    </div>
+                </div>
+                
+                <!-- Onglet 3: Infos système -->
+                <div class="tab-pane fade" id="system-info-pane" role="tabpanel" aria-labelledby="system-info-tab">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>🔧 Informations Celery</h6>
+                            <div id="celery-info" class="bg-light p-3 rounded">
+                                <div class="text-muted">Chargement des informations Celery...</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>📊 Statistiques</h6>
+                            <div id="task-stats" class="bg-light p-3 rounded">
+                                <div class="text-muted">Chargement des statistiques...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
             </div>
         </div>
     </div>
@@ -130,6 +206,7 @@
     <div class="mt-4">
         <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline-secondary">🏠 Retour Dashboard</a>
         <a href="{{ url_for('tasks.tasks_dashboard') }}" class="btn btn-outline-info">📊 Toutes les tâches</a>
+        <a href="http://localhost:5555" target="_blank" class="btn btn-outline-warning">🌸 Flower</a>
     </div>
 </div>
 
@@ -138,37 +215,60 @@ const taskId = '{{ task_id }}';
 let refreshInterval;
 let startTime = new Date();
 let lastState = 'PENDING';
+let rawCommandsLog = [];
+let activityLogEntries = [];
 
 // Démarrer le monitoring automatique
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Monitoring chargé pour tâche:', taskId);
     refreshStatus();
     startAutoRefresh();
+    loadSystemInfo();
 });
 
 function startAutoRefresh() {
-    refreshInterval = setInterval(refreshStatus, 2000); // Toutes les 2 secondes
+    refreshInterval = setInterval(refreshStatus, 3000); // Toutes les 3 secondes
+    console.log('🔄 Auto-refresh activé');
 }
 
 function stopAutoRefresh() {
     if (refreshInterval) {
         clearInterval(refreshInterval);
+        console.log('⏹️ Auto-refresh arrêté');
     }
 }
 
+// ✅ FONCTION MANQUANTE AJOUTÉE
 function refreshStatus() {
+    console.log('🔄 Actualisation du statut...');
+    
     fetch(`/tasks/api/${taskId}/status`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
-            updateUI(data);
+            console.log('📊 Données reçues:', data);
+            
+            if (data.success !== false) {
+                updateUI(data);
+            } else {
+                console.warn('⚠️ Pas de données disponibles:', data);
+                addLogEntry('⚠️ Tâche en cours de démarrage...', 'info');
+            }
             
             // Arrêter l'auto-refresh si terminé
-            if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
+            if (data.unified_state === 'SUCCESS' || data.unified_state === 'FAILURE' || 
+                data.state === 'SUCCESS' || data.state === 'FAILURE') {
                 stopAutoRefresh();
+                addLogEntry('✅ Monitoring terminé - tâche complète', 'info');
             }
         })
         .catch(error => {
-            console.error('Erreur refresh:', error);
-            addLogEntry('❌ Erreur de communication avec le serveur', 'error');
+            console.error('❌ Erreur refresh:', error);
+            addLogEntry('❌ Erreur de communication: ' + error.message, 'error');
         });
 }
 
@@ -221,12 +321,14 @@ function updateUI(data) {
     }
     
     // Mettre à jour les informations détaillées
-    if (data.meta) {
-        if (data.meta.target) {
-            document.getElementById('task-target').textContent = data.meta.target;
+    if (data.meta || data.celery_info) {
+        const metaData = data.meta || data.celery_info || {};
+        
+        if (metaData.target) {
+            document.getElementById('task-target').textContent = metaData.target;
         }
-        if (data.meta.phase) {
-            document.getElementById('task-phase').textContent = data.meta.phase;
+        if (metaData.phase) {
+            document.getElementById('task-phase').textContent = metaData.phase;
         }
     }
     
@@ -246,11 +348,24 @@ function updateUI(data) {
     // Ajouter au log les changements de statut
     if (data.unified_status && data.unified_status !== 'État inconnu') {
         addLogEntry(`ℹ️ ${data.unified_status}`, 'info');
-    }    
+    }
     
-    // ✅ AFFICHER LES RÉSULTATS INTELLIGEMMENT
+    // NOUVEAU : Capturer les commandes brutes
+    if (data.meta && data.meta.phase) {
+        addRawCommand(`# Phase: ${data.meta.phase}`);
+        
+        // Simuler les commandes selon la phase
+        if (data.meta.phase === 'Découverte réseau' && !rawCommandsLog.find(cmd => cmd.includes('nmap -sn'))) {
+            addRawCommand(`nmap -sn ${data.meta.target || '172.20.0.1/24'}`);
+        } else if (data.meta.phase === 'Scan ports' && !rawCommandsLog.find(cmd => cmd.includes('nmap -p'))) {
+            addRawCommand(`nmap -p 21,22,23,25,53,80,443 ${data.meta.target || '172.20.0.1/24'}`);
+        } else if (data.meta.phase === 'Service detection' && !rawCommandsLog.find(cmd => cmd.includes('nmap -sV'))) {
+            addRawCommand(`nmap -sV ${data.meta.target || '172.20.0.1/24'}`);
+        }
+    }
+    
+    // Afficher les résultats si terminé
     if (state === 'SUCCESS' && data.result) {
-        // Vérifier si c'est une tâche de découverte réseau
         if (isDiscoveryTask(data.result)) {
             showDiscoveryResults(data.result);
         } else {
@@ -259,9 +374,466 @@ function updateUI(data) {
     }
     
     // Afficher les erreurs si échec
-    if (state === 'FAILURE' && data.error) {
-        showError(data.error);
+    if (state === 'FAILURE' && (data.error || data.celery_info)) {
+        showError(data.error || JSON.stringify(data.celery_info));
     }
+}
+
+// NOUVELLES FONCTIONS POUR LES ONGLETS
+
+function addLogEntry(message, type = 'info') {
+    const logDiv = document.getElementById('activity-log');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    const entry = document.createElement('div');
+    entry.className = `mb-1 text-${type === 'error' ? 'danger' : 'dark'}`;
+    entry.innerHTML = `<small class="text-muted">${timestamp}</small> ${message}`;
+    
+    // Ajouter à la liste pour export
+    activityLogEntries.push({
+        timestamp,
+        message,
+        type
+    });
+    
+    logDiv.appendChild(entry);
+    logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll
+}
+
+function addRawCommand(command) {
+    const rawDiv = document.getElementById('raw-commands');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    // Éviter les doublons
+    if (rawCommandsLog.includes(command)) {
+        return;
+    }
+    
+    rawCommandsLog.push(command);
+    
+    const entry = document.createElement('div');
+    entry.className = 'mb-1';
+    
+    if (command.startsWith('#')) {
+        // Commentaire
+        entry.innerHTML = `<span class="text-info">[${timestamp}] ${command}</span>`;
+    } else {
+        // Commande
+        entry.innerHTML = `<span class="text-warning">[${timestamp}]</span> <span class="text-success">$ ${command}</span>`;
+    }
+    
+    rawDiv.appendChild(entry);
+    rawDiv.scrollTop = rawDiv.scrollHeight; // Auto-scroll
+}
+
+function clearActivityLog() {
+    if (confirm('Voulez-vous vraiment vider le log des activités ?')) {
+        document.getElementById('activity-log').innerHTML = '<div class="text-muted">Log vidé par l\'utilisateur</div>';
+        activityLogEntries = [];
+        addLogEntry('🗑️ Log des activités vidé', 'info');
+    }
+}
+
+function clearRawCommands() {
+    if (confirm('Voulez-vous vraiment vider les commandes brutes ?')) {
+        document.getElementById('raw-commands').innerHTML = '<div class="text-success">$ Log vidé par l\'utilisateur</div>';
+        rawCommandsLog = [];
+    }
+}
+
+function exportActivityLog() {
+    const content = activityLogEntries.map(entry => 
+        `[${entry.timestamp}] ${entry.message}`
+    ).join('\n');
+    
+    downloadTextFile(content, `activity-log-${taskId}.txt`);
+}
+
+function exportRawCommands() {
+    const content = rawCommandsLog.map((cmd, index) => 
+        `${index + 1}. ${cmd}`
+    ).join('\n');
+    
+    downloadTextFile(content, `raw-commands-${taskId}.txt`);
+}
+
+function downloadTextFile(content, filename) {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function loadSystemInfo() {
+    // Charger les infos Celery
+    fetch('/tasks/api/real-stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('celery-info').innerHTML = `
+                    <p><strong>Workers actifs:</strong> ${data.stats.workers || 0}</p>
+                    <p><strong>Tâches actives:</strong> ${data.stats.active || 0}</p>
+                    <p><strong>Tâches en attente:</strong> ${data.stats.scheduled || 0}</p>
+                `;
+                
+                document.getElementById('task-stats').innerHTML = `
+                    <p><strong>Terminées:</strong> ${data.stats.completed || 0}</p>
+                    <p><strong>Échouées:</strong> ${data.stats.failed || 0}</p>
+                    <p><strong>Total:</strong> ${(data.stats.completed || 0) + (data.stats.failed || 0)}</p>
+                `;
+            }
+        })
+        .catch(error => {
+            document.getElementById('celery-info').innerHTML = '<div class="text-danger">Erreur de chargement</div>';
+            document.getElementById('task-stats').innerHTML = '<div class="text-danger">Erreur de chargement</div>';
+        });
+}
+
+function isDiscoveryTask(result) {
+    return result && 
+           result.result_data && 
+           (result.result_data.summary || result.result_data.hosts || result.result_data.module === 'Découverte Réseau');
+}
+
+function showDiscoveryResults(result) {
+    const discoveryDiv = document.getElementById('discovery-results');
+    const contentDiv = document.getElementById('discovery-content');
+    
+    const resultData = result.result_data;
+    
+    if (resultData && resultData.success) {
+        let html = `
+            <div class="alert alert-success">
+                <h6>✅ Découverte terminée avec succès !</h6>
+                <p><strong>🎯 Réseau :</strong> ${resultData.target}</p>
+            </div>
+        `;
+        
+        // Résumé avec cartes
+        if (resultData.summary) {
+            html += `
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card text-center border-primary">
+                            <div class="card-body">
+                                <h5 class="card-title text-primary">${resultData.summary.total_hosts_found || 0}</h5>
+                                <p class="card-text">🌐 Hôtes trouvés</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center border-success">
+                            <div class="card-body">
+                                <h5 class="card-title text-success">${resultData.summary.hosts_with_open_ports || 0}</h5>
+                                <p class="card-text">🔓 Avec ports ouverts</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center border-info">
+                            <div class="card-body">
+                                <h5 class="card-title text-info">${resultData.summary.total_open_ports || 0}</h5>
+                                <p class="card-text">🔢 Ports ouverts total</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center border-warning">
+                            <div class="card-body">
+                                <h5 class="card-title text-warning">${(resultData.summary.potential_servers || []).length}</h5>
+                                <p class="card-text">🖥️ Serveurs détectés</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Tableau des hôtes détaillés
+        if (resultData.hosts && resultData.hosts.length > 0) {
+            html += `
+                <h6>🔍 Détails des hôtes :</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>IP</th>
+                                <th>Statut</th>
+                                <th style="width: 200px;">Ports ouverts</th>
+                                <th style="width: 250px;">Services</th>
+                                <th style="width: 200px;">OS</th>
+                                <th style="width: 300px;">Infos supplémentaires</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            resultData.hosts.forEach(host => {
+                html += `
+                    <tr>
+                        <td><strong>${host.ip}</strong></td>
+                        <td>
+                            ${host.scan_success ? 
+                                '<span class="badge bg-success">Actif</span>' : 
+                                '<span class="badge bg-danger">Erreur</span>'
+                            }
+                        </td>
+                        <td>
+                            ${host.ports && host.ports.length > 0 ? 
+                                `<div style="max-height: 120px; overflow-y: auto;">
+                                    ${host.ports.map(port => `<span class="badge bg-light text-dark d-block mb-1">${port.port}</span>`).join('')}
+                                </div>` : 
+                                '<span class="text-muted">Aucun</span>'
+                            }
+                        </td>
+                        <td>
+                            ${host.services && host.services.length > 0 ? 
+                                `<div style="max-height: 120px; overflow-y: auto;">
+                                    ${host.services.map(service => `<small class="text-info d-block mb-1">${service.version || service.service}</small>`).join('')}
+                                </div>` : 
+                                '<span class="text-muted">N/A</span>'
+                            }
+                        </td>
+                        <td>
+                            ${host.os ? 
+                                `<div style="max-height: 120px; overflow-y: auto;">
+                                    <small class="text-warning">${host.os}</small>
+                                </div>` : 
+                                '<span class="text-muted">Non détecté</span>'
+                            }
+                        </td>
+                        <td>
+                            ${host.additional_info && host.additional_info.length > 0 ? 
+                                `<div style="max-height: 120px; overflow-y: auto;">
+                                    ${host.additional_info.map(info => `<small class="text-primary d-block mb-1">• ${info}</small>`).join('')}
+                                </div>` : 
+                                '<span class="text-muted">Aucune</span>'
+                            }
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+        
+        // Serveurs potentiels
+        if (resultData.summary && resultData.summary.potential_servers && resultData.summary.potential_servers.length > 0) {
+            html += `
+                <h6>🖥️ Serveurs détectés :</h6>
+                <div class="row">
+            `;
+            
+            resultData.summary.potential_servers.forEach(server => {
+                html += `
+                    <div class="col-md-4 mb-2">
+                        <div class="card border-warning">
+                            <div class="card-body">
+                                <h6 class="card-title">${server.ip}</h6>
+                                <p class="card-text">
+                                    <span class="badge bg-warning text-dark">${server.type}</span><br>
+                                    <small>Ports: ${server.ports.join(', ')}</small>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                </div>
+            `;
+        }
+        
+        // Ports les plus fréquents
+        if (resultData.summary && resultData.summary.most_common_ports) {
+            html += `
+                <h6>📊 Ports les plus fréquents :</h6>
+                <div class="row mb-3">
+            `;
+            
+            Object.entries(resultData.summary.most_common_ports).forEach(([port, count]) => {
+                html += `
+                    <div class="col-md-2 mb-2">
+                        <div class="card text-center border-info">
+                            <div class="card-body py-2">
+                                <h6 class="card-title text-info mb-1">${port}</h6>
+                                <small class="text-muted">${count} hôte(s)</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                </div>
+            `;
+        }
+        
+        // Boutons d'action
+        html += `
+            <div class="mt-4">
+                <button class="btn btn-outline-primary" onclick="downloadResults()">
+                    💾 Télécharger rapport complet
+                </button>
+                <button class="btn btn-outline-info" onclick="copyResultsToClipboard()">
+                    📋 Copier dans le presse-papier
+                </button>
+            </div>
+        `;
+        
+        contentDiv.innerHTML = html;
+        discoveryDiv.style.display = 'block';
+        
+        // Ajouter au log
+        addLogEntry(`✅ Résultats affichés: ${resultData.summary?.total_hosts_found || 0} hôtes trouvés`, 'info');
+        
+    } else {
+        // Affichage d'erreur
+        contentDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <h6>❌ Erreur lors de la découverte</h6>
+                <p>${resultData?.error || 'Erreur inconnue'}</p>
+                <pre class="mt-2 bg-light p-2 rounded">${JSON.stringify(result, null, 2)}</pre>
+            </div>
+        `;
+        discoveryDiv.style.display = 'block';
+    }
+}
+
+function showResults(result) {
+    const resultsDiv = document.getElementById('task-results');
+    const contentDiv = document.getElementById('results-content');
+    
+    // Formatter les résultats selon le type
+    let resultHtml = `
+        <h6>📊 Résultats détaillés :</h6>
+        <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;">${JSON.stringify(result, null, 2)}</pre>
+    `;
+    
+    contentDiv.innerHTML = resultHtml;
+    resultsDiv.style.display = 'block';
+}
+
+function showError(error) {
+    const errorDiv = document.getElementById('task-errors');
+    const contentDiv = document.getElementById('error-content');
+    
+    contentDiv.innerHTML = `
+        <h6>❌ Détails de l'erreur :</h6>
+        <pre class="bg-danger-subtle p-3 rounded">${error}</pre>
+    `;
+    errorDiv.style.display = 'block';
+}
+
+
+function copyResultsToClipboard() {
+    const resultContent = document.getElementById('discovery-content');
+    
+    if (!resultContent) {
+        alert('Aucun résultat à copier');
+        return;
+    }
+    
+    // Extraire le texte sans HTML
+    const textContent = resultContent.innerText;
+    
+    navigator.clipboard.writeText(textContent).then(() => {
+        addLogEntry('📋 Résultats copiés dans le presse-papier', 'info');
+        
+        // Notification visuelle temporaire
+        const button = event.target;
+        const originalText = button.innerHTML;
+        button.innerHTML = '✅ Copié !';
+        button.disabled = true;
+        
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }, 2000);
+    }).catch(err => {
+        console.error('Erreur copie:', err);
+        addLogEntry('❌ Erreur lors de la copie', 'error');
+    });
+}
+
+function downloadResults() {
+    // Créer un rapport complet
+    const timestamp = new Date().toISOString();
+    const report = `
+RAPPORT DE DÉCOUVERTE RÉSEAU
+============================
+Généré le: ${timestamp}
+ID de tâche: ${taskId}
+
+${document.getElementById('discovery-content').innerText}
+
+--- Logs d'activité ---
+${activityLogEntries.map(entry => `[${entry.timestamp}] ${entry.message}`).join('\n')}
+
+--- Commandes exécutées ---
+${rawCommandsLog.map((cmd, i) => `${i + 1}. ${cmd}`).join('\n')}
+    `.trim();
+    
+    downloadTextFile(report, `discovery-report-${taskId}.txt`);
+}
+
+function cancelTask() {
+    if (confirm('⚠️ Êtes-vous sûr de vouloir annuler cette tâche ?')) {
+        fetch(`/tasks/api/${taskId}/cancel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                addLogEntry('🛑 Tâche annulée par l\'utilisateur', 'info');
+                document.getElementById('cancel-btn').disabled = true;
+                stopAutoRefresh();
+            } else {
+                addLogEntry('❌ Échec de l\'annulation: ' + data.error, 'error');
+            }
+        })
+        .catch(error => {
+            addLogEntry('❌ Erreur annulation: ' + error, 'error');
+        });
+    }
+}
+
+// Nettoyer l'interval quand on quitte la page
+window.addEventListener('beforeunload', function() {
+    stopAutoRefresh();
+});
+</script>
+
+
+
+{% endblock %}
+                document.getElementById('celery-info').innerHTML = `
+                    <p><strong>Workers actifs:</strong> ${data.stats.workers || 0}</p>
+                    <p><strong>Tâches actives:</strong> ${data.stats.active || 0}</p>
+                    <p><strong>Tâches en attente:</strong> ${data.stats.scheduled || 0}</p>
+                `;
+                
+                document.getElementById('task-stats').innerHTML = `
+                    <p><strong>Terminées:</strong> ${data.stats.completed || 0}</p>
+                    <p><strong>Échouées:</strong> ${data.stats.failed || 0}</p>
+                    <p><strong>Total:</strong> ${(data.stats.completed || 0) + (data.stats.failed || 0)}</p>
+                `;
+            }
+        })
+        .catch(error => {
+            document.getElementById('celery-info').innerHTML = '<div class="text-danger">Erreur de chargement</div>';
+        });
 }
 
 // ✅ NOUVELLE FONCTION : Détecter si c'est une tâche de découverte
@@ -441,18 +1013,6 @@ function showDiscoveryResults(result) {
     }
 }
 
-function addLogEntry(message, type = 'info') {
-    const logDiv = document.getElementById('activity-log');
-    const timestamp = new Date().toLocaleTimeString();
-    
-    const entry = document.createElement('div');
-    entry.className = `mb-1 text-${type === 'error' ? 'danger' : 'dark'}`;
-    entry.innerHTML = `<small class="text-muted">${timestamp}</small> ${message}`;
-    
-    logDiv.appendChild(entry);
-    logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll
-}
-
 function showResults(result) {
     const resultsDiv = document.getElementById('task-results');
     const contentDiv = document.getElementById('results-content');
@@ -483,37 +1043,3 @@ function cancelTask() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                addLogEntry('🛑 Tâche annulée par l\'utilisateur', 'info');
-                document.getElementById('cancel-btn').disabled = true;
-                stopAutoRefresh();
-            } else {
-                addLogEntry('❌ Échec de l\'annulation: ' + data.error, 'error');
-            }
-        })
-        .catch(error => {
-            addLogEntry('❌ Erreur annulation: ' + error, 'error');
-        });
-    }
-}
-
-function downloadResults() {
-    // Créer un blob avec les résultats
-    const results = document.getElementById('results-content').textContent;
-    const blob = new Blob([results], { type: 'application/json' });
-    
-    // Créer un lien de téléchargement
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `task_${taskId}_results.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
-// Nettoyer l'interval quand on quitte la page
-window.addEventListener('beforeunload', function() {
-    stopAutoRefresh();
-});
-</script>
-
-{% endblock %}

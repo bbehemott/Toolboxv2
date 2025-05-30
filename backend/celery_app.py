@@ -1,4 +1,4 @@
-# backend/celery_app.py - Configuration Celery
+# backend/celery_app.py - Configuration Celery nettoyée
 import os
 from celery import Celery
 import logging
@@ -54,9 +54,7 @@ def make_celery():
         # ===== ROUTES DES TÂCHES =====
         task_routes={
             'tasks.discover_network': {'queue': 'discovery'},
-            'tasks.scan_vulnerabilities': {'queue': 'vulnscans'},
-            'tasks.exploit_target': {'queue': 'exploitation'},
-            'tasks.nmap_scan': {'queue': 'portscans'},
+            'tasks.test_task': {'queue': 'default'},
         },
         
         # ===== CONFIGURATION DES QUEUES =====
@@ -69,18 +67,6 @@ def make_celery():
             'discovery': {
                 'exchange': 'discovery',
                 'routing_key': 'discovery',
-            },
-            'vulnscans': {
-                'exchange': 'vulnscans', 
-                'routing_key': 'vulnscans',
-            },
-            'portscans': {
-                'exchange': 'portscans',
-                'routing_key': 'portscans', 
-            },
-            'exploitation': {
-                'exchange': 'exploitation',
-                'routing_key': 'exploitation',
             }
         }
     )

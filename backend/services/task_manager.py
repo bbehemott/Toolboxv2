@@ -52,62 +52,6 @@ class TaskManager:
             logger.error(f"Erreur lancement tâche découverte: {e}")
             return None
     
-    def start_nmap_task(self, target: str, scan_type: str, ports: str = None, user_id: int = None) -> Optional[str]:
-        """Lance une tâche de scan Nmap"""
-        try:
-            task_id = str(uuid.uuid4())
-            
-            # Enregistrer en base
-            self.db.create_task(
-                task_id=task_id,
-                task_name=f'Nmap {scan_type} → {target}',
-                task_type='nmap_scan',
-                target=target,
-                user_id=user_id
-            )
-            
-            # Lancer la tâche Celery
-            from tasks import nmap_scan
-            celery_task = nmap_scan.apply_async(
-                args=[target, scan_type, ports],
-                task_id=task_id
-            )
-            
-            logger.info(f"Tâche Nmap lancée: {task_id} ({scan_type}) pour {target}")
-            return task_id
-            
-        except Exception as e:
-            logger.error(f"Erreur lancement tâche Nmap: {e}")
-            return None
-    
-    def start_vulnerability_task(self, target: str, scripts: str = 'vuln', user_id: int = None) -> Optional[str]:
-        """Lance une tâche de scan de vulnérabilités"""
-        try:
-            task_id = str(uuid.uuid4())
-            
-            # Enregistrer en base
-            self.db.create_task(
-                task_id=task_id,
-                task_name=f'Vulnérabilités → {target}',
-                task_type='vulnerability_scan',
-                target=target,
-                user_id=user_id
-            )
-            
-            # Lancer la tâche Celery
-            from tasks import vulnerability_scan
-            celery_task = vulnerability_scan.apply_async(
-                args=[target, scripts],
-                task_id=task_id
-            )
-            
-            logger.info(f"Tâche vulnérabilités lancée: {task_id} pour {target}")
-            return task_id
-            
-        except Exception as e:
-            logger.error(f"Erreur lancement tâche vulnérabilités: {e}")
-            return None
-    
     def start_test_task(self, duration: int = 10, user_id: int = None) -> Optional[str]:
         """Lance une tâche de test"""
         try:

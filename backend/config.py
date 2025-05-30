@@ -19,6 +19,7 @@ class Config:
     
     # OpenVAS
     OPENVAS_HOST = os.getenv('OPENVAS_HOST', 'openvas')
+    OPENVAS_CONTAINER_NAME = os.getenv('OPENVAS_CONTAINER_NAME', 'toolbox-openvas')
     OPENVAS_PORT = int(os.getenv('OPENVAS_PORT', '9390'))
     OPENVAS_USER = os.getenv('OPENVAS_USER', 'admin')
     OPENVAS_PASSWORD = os.getenv('OPENVAS_PASSWORD', 'admin')

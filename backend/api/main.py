@@ -55,17 +55,26 @@ def dashboard():
         
         # Récupérer les tâches récentes de l'utilisateur
         user_id = session.get('user_id')
-        recent_tasks = current_app.db.get_tasks(user_id=user_id, limit=5)
-        recent_scans = current_app.db.get_scans(user_id=user_id, limit=5)
+        user_role = session.get('role')
         
+        # Admin voit toutes les tâches, autres seulement les leurs
+        if user_role == 'admin':
+            recent_tasks = current_app.db.get_tasks(limit=5)
+        else:
+            recent_tasks = current_app.db.get_tasks(user_id=user_id, limit=5)
+                
         return render_template('dashboard/dashboard.html', 
-                             stats=stats,
-                             recent_tasks=recent_tasks,
-                             recent_scans=recent_scans)
+                             stats=stats or {},
+                             recent_tasks=recent_tasks or [])
+                             
     except Exception as e:
         logger.error(f"Erreur dashboard: {e}")
-        flash('Erreur lors du chargement du dashboard', 'danger')
-        return render_template('dashboard/dashboard.html', stats={}, recent_tasks=[], recent_scans=[])
+        # En cas d'erreur, renvoyer des valeurs par défaut
+        return render_template('dashboard/dashboard.html', 
+                             stats={}, 
+                             recent_tasks=[])
+
+
 
 @main_bp.route('/profile')
 @login_required

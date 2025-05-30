@@ -68,28 +68,6 @@ class DatabaseManager:
                 )
             ''')
             
-            # Table scans OpenVAS
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS scans (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scan_name TEXT NOT NULL,
-                    target_ip TEXT NOT NULL,
-                    scan_type TEXT NOT NULL,
-                    openvas_task_id TEXT,
-                    openvas_target_id TEXT,
-                    openvas_config_id TEXT,
-                    status TEXT DEFAULT 'created',
-                    progress INTEGER DEFAULT 0,
-                    user_id INTEGER,
-                    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    result_summary TEXT,
-                    estimated_duration TEXT,
-                    hidden BOOLEAN DEFAULT 0,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                )
-            ''')
-            
             # Table résultats de modules
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS module_results (
@@ -258,93 +236,6 @@ class DatabaseManager:
             cursor.execute('UPDATE tasks SET hidden = 1 WHERE task_id = ?', (task_id,))
             conn.commit()
             return cursor.rowcount > 0
-    
-    # ===== MÉTHODES SCANS OPENVAS =====
-    
-    def create_scan(self, scan_name: str, target_ip: str, scan_type: str,
-                   openvas_task_id: str = None, user_id: int = None) -> int:
-        """Crée un nouveau scan OpenVAS"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO scans (scan_name, target_ip, scan_type, openvas_task_id, user_id)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (scan_name, target_ip, scan_type, openvas_task_id, user_id))
-            conn.commit()
-            return cursor.lastrowid
-    
-    def get_scans(self, user_id: int = None, include_hidden: bool = False,
-                  active_only: bool = False, limit: int = 50) -> List[Dict]:
-        """Récupère les scans"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            conditions = []
-            params = []
-            
-            if not include_hidden:
-                conditions.append('hidden = 0')
-            
-            if active_only:
-                conditions.append("status NOT IN ('completed', 'failed', 'stopped')")
-            
-            if user_id:
-                conditions.append('user_id = ?')
-                params.append(user_id)
-            
-            where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-            
-            cursor.execute(f'''
-                SELECT s.*, u.username
-                FROM scans s
-                LEFT JOIN users u ON s.user_id = u.id
-                {where_clause}
-                ORDER BY s.started_at DESC
-                LIMIT ?
-            ''', params + [limit])
-            
-            return [dict(row) for row in cursor.fetchall()]
-
-
-
-    def update_scan_status(self, scan_id: int, status: str, progress: int = None,
-                          result_summary: str = None) -> bool:
-        """Met à jour le statut d'un scan OpenVAS"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                updates = ['status = ?']
-                params = [status]
-                
-                if progress is not None:
-                    updates.append('progress = ?')
-                    params.append(progress)
-                
-                if result_summary:
-                    updates.append('result_summary = ?')
-                    params.append(result_summary)
-                
-                if status in ['completed', 'failed', 'stopped']:
-                    updates.append('completed_at = CURRENT_TIMESTAMP')
-                
-                query = f"UPDATE scans SET {', '.join(updates)} WHERE id = ?"
-                params.append(scan_id)
-                
-                cursor.execute(query, params)
-                conn.commit()
-                return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Erreur mise à jour scan {scan_id}: {e}")
-            return False
-
-    def hide_scan(self, scan_id: int) -> bool:
-        """Masque un scan"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('UPDATE scans SET hidden = 1 WHERE id = ?', (scan_id,))
-            conn.commit()
-            return cursor.rowcount > 0
 
     def get_task_by_id(self, task_id: str) -> Optional[Dict]:
         """Récupère une tâche par son ID"""
@@ -359,8 +250,6 @@ class DatabaseManager:
             
             row = cursor.fetchone()
             return dict(row) if row else None
-
-
     
     # ===== MÉTHODES UTILITAIRES =====
     
@@ -381,16 +270,6 @@ class DatabaseManager:
             task_stats = {row['status']: row['count'] for row in cursor.fetchall()}
             stats['tasks'] = task_stats
             
-            # Statistiques scans
-            cursor.execute('''
-                SELECT status, COUNT(*) as count
-                FROM scans
-                WHERE hidden = 0
-                GROUP BY status
-            ''')
-            scan_stats = {row['status']: row['count'] for row in cursor.fetchall()}
-            stats['scans'] = scan_stats
-            
             # Utilisateurs actifs
             cursor.execute('SELECT COUNT(*) as count FROM users WHERE active = 1')
             stats['active_users'] = cursor.fetchone()['count']
@@ -404,7 +283,20 @@ class DatabaseManager:
             cursor.execute('''
                 UPDATE tasks SET hidden = 1
                 WHERE completed_at < datetime('now', '-{} days')
-                AND status IN ('completed', 'failed')
+                AND status IN ('completed', 'failed', 'cancelled')
+                AND hidden = 0
             '''.format(days))
+            conn.commit()
+            return cursor.rowcount
+    
+    def cleanup_all_completed_tasks(self) -> int:
+        """Supprime toutes les tâches terminées (completed, failed, cancelled)"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE tasks SET hidden = 1
+                WHERE status IN ('completed', 'failed', 'cancelled')
+                AND hidden = 0
+            ''')
             conn.commit()
             return cursor.rowcount

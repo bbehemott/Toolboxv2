@@ -6,7 +6,7 @@
     <h2>📊 Dashboard des Tâches Celery</h2>
     <p class="text-muted">Monitoring global de toutes les tâches asynchrones</p>
 
-    <!-- Actions rapides - AVEC BOUTON PURGE À DROITE -->
+    <!-- Actions rapides -->
     <div class="row mb-4">
         <div class="col-md-12">
             <div class="d-flex justify-content-between">
@@ -20,7 +20,7 @@
         </div>
     </div>
 
-    <!-- Statistiques globales - AVEC VRAIES DONNÉES -->
+    <!-- Statistiques globales -->
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="card text-center border-info">
@@ -76,11 +76,11 @@
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5>📋 Historique récent</h5>
-            <span class="badge bg-secondary" id="history-count">{{ recent_tasks|length if recent_tasks else 0 }}</span>
+            <span class="badge bg-secondary" id="history-count">0</span>
         </div>
         <div class="card-body">
             <div id="recent-tasks-list">
-                {% if recent_tasks and recent_tasks|length > 0 %}
+                {% if tasks and tasks|length > 0 %}
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">
                             <thead>
@@ -95,43 +95,47 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for task in recent_tasks %}
-                                <tr class="{% if task.state == 'SUCCESS' %}table-success{% elif task.state == 'FAILURE' %}table-danger{% else %}table-secondary{% endif %}">
+                                {% for task in tasks %}
+                                <tr class="task-item" data-task-id="{{ task.task_id }}">
                                     <td>
-                                        <span class="badge bg-{% if task.state == 'SUCCESS' %}success{% elif task.state == 'FAILURE' %}danger{% else %}secondary{% endif %}">
-                                            {{ task.type if task.type else 'Tâche' }}
+                                        <span class="badge bg-{{ 'success' if task.status == 'completed' else 'warning' if task.status == 'running' else 'danger' if task.status == 'failed' else 'secondary' }}">
+                                            {{ task.task_type }}
                                         </span>
                                     </td>
                                     <td>
-                                        <strong>{{ task.scan_name if task.scan_name else task.name }}</strong>
+                                        <strong>{{ task.task_name }}</strong>
                                     </td>
                                     <td>
-                                        <small>{{ task.target }}</small>
+                                        <small>{{ task.target or 'N/A' }}</small>
                                     </td>
                                     <td>
-                                        {% if task.state == 'SUCCESS' %}
+                                        {% if task.status == 'completed' %}
                                             <span class="text-success">✅ {{ task.status }}</span>
-                                        {% elif task.state == 'FAILURE' %}
+                                        {% elif task.status == 'failed' %}
                                             <span class="text-danger">❌ {{ task.status }}</span>
+                                        {% elif task.status == 'running' %}
+                                            <span class="text-warning">⚡ {{ task.status }}</span>
                                         {% else %}
                                             <span class="text-secondary">⏳ {{ task.status }}</span>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <small>{{ task.user if task.user else 'Système' }}</small>
+                                        <small>{{ task.username or 'Système' }}</small>
                                     </td>
                                     <td>
                                         <small>{{ task.started_at }}</small>
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
-                                            {% if task.id %}
-                                                <button class="btn btn-outline-warning" 
-                                                        onclick="hideTaskFromHistory('{{ task.id }}', this)" 
-                                                        title="Supprimer de l'historique">
-                                                    🗑️
-                                                </button>
-                                            {% endif %}
+                                            <a href="{{ url_for('tasks.task_status', task_id=task.task_id) }}" 
+                                               class="btn btn-outline-info" title="Voir détails">
+                                                👁️
+                                            </a>
+                                            <button class="btn btn-outline-warning" 
+                                                    onclick="hideTaskFromHistory('{{ task.task_id }}')" 
+                                                    title="Supprimer de l'historique">
+                                                🗑️
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -156,21 +160,6 @@ let refreshInterval;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Dashboard chargé - Initialisation...');
     
-    // Test de connectivité
-    fetch('/tasks/api/real-stats')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                console.log('✅ Connectivité API confirmée');
-            } else {
-                console.warn('⚠️ API répond mais avec erreur:', data.error);
-            }
-        })
-        .catch(error => {
-            console.error('❌ Problème connectivité API:', error);
-            showNotification('Problème de connexion avec le serveur', 'error');
-        });
-    
     // Démarrer le dashboard avec auto-refresh
     refreshDashboard();
     startAutoRefresh();
@@ -188,122 +177,508 @@ function stopAutoRefresh() {
     }
 }
 
+function refreshDashboard() {
+    console.log('🔄 Actualisation dashboard...');
+    
+    // Mettre à jour les statistiques
+    fetch('/tasks/api/real-stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('📊 Stats reçues:', data.stats);
+                updateStats(data.stats);
+            } else {
+                console.warn('⚠️ Erreur stats:', data.error);
+                showDefaultStats();
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erreur récupération stats:', error);
+            showDefaultStats();
+        });
+    
+    // Mettre à jour la liste des tâches ET les progressions en temps réel
+    fetch('/tasks/api/list?limit=20')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('📋 Tâches reçues:', data.tasks.length);
+                
+                // Mettre à jour l'historique
+                updateTasksList(data.tasks);
+                document.getElementById('history-count').textContent = data.tasks.length;
+                
+                // Mettre à jour les tâches actives avec progression temps réel
+                const now = new Date();
+                const activeTasks = data.tasks.filter(task => {
+                    // Tâches en cours
+                    if (task.status === 'running' || task.status === 'pending' || task.status === 'started') {
+                        return true;
+                    }
+                    
+                    // Ou tâches récemment terminées (5 minutes)
+                    if (task.completed_at || task.started_at) {
+                        const taskTime = new Date(task.completed_at || task.started_at);
+                        const diffMinutes = (now - taskTime) / (1000 * 60);
+                        return diffMinutes < 5; // Afficher pendant 5 minutes après completion
+                    }
+                    
+                    return false;
+                });
+                
+                if (activeTasks.length > 0) {
+                    // Mettre à jour chaque tâche active individuellement
+                    activeTasks.forEach(task => {
+                        updateSingleTaskDisplay(task);
+                    });
+                    
+                    // Supprimer les tâches qui ne sont plus actives
+                    cleanupInactiveTasks(activeTasks);
+                } else {
+                    document.getElementById('active-tasks-list').innerHTML = `
+                        <div class="text-center text-muted py-4">
+                            😴 Aucune tâche en cours d'exécution
+                            <br><small>Les tâches récentes s'affichent ici pendant 5 minutes</small>
+                        </div>
+                    `;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erreur récupération tâches:', error);
+        });
+}
+
+function cleanupInactiveTasks(activeTasks) {
+    const activeTaskIds = activeTasks.map(task => task.task_id);
+    const container = document.getElementById('active-tasks-list');
+    
+    // Supprimer les tâches qui ne sont plus dans la liste active
+    const existingTasks = container.querySelectorAll('[id^="active-task-"]');
+    existingTasks.forEach(taskElement => {
+        const taskId = taskElement.id.replace('active-task-', '');
+        if (!activeTaskIds.includes(taskId)) {
+            console.log(`🗑️ Suppression tâche inactive: ${taskId}`);
+            taskElement.remove();
+        }
+    });
+}
+
+async function fetchTaskStatus(taskId) {
+    try {
+        console.log(`📡 Récupération statut pour: ${taskId}`);
+        const response = await fetch(`/tasks/api/${taskId}/status`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log(`📊 Statut reçu pour ${taskId}:`, data);
+        
+        return data.success ? data : null;
+    } catch (error) {
+        console.error(`❌ Erreur statut tâche ${taskId}:`, error);
+        return null;
+    }
+}
+
+
+function updateStats(stats) {
+    // Mettre à jour les statistiques affichées
+    document.getElementById('total-active').textContent = stats.active || 0;
+    document.getElementById('total-scheduled').textContent = stats.scheduled || 0;
+    document.getElementById('total-completed').textContent = stats.completed || 0;
+    document.getElementById('total-failed').textContent = stats.failed || 0;
+    
+    // Mettre à jour le compteur des tâches actives
+    document.getElementById('active-count').textContent = stats.active || 0;
+    
+    // AMÉLIORATION : Affichage détaillé des tâches actives
+    if (stats.active > 0) {
+        // Récupérer les détails des tâches actives
+        fetchActiveTasksDetails();
+    } else {
+        document.getElementById('active-tasks-list').innerHTML = `
+            <div class="text-center text-muted py-4">
+                😴 Aucune tâche en cours d'exécution
+            </div>
+        `;
+    }
+}
+
+
+
+function fetchActiveTasksDetails() {
+    // CORRECTION : Récupérer TOUTES les tâches récentes et filtrer côté client
+    fetch('/tasks/api/list?limit=20')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.tasks.length > 0) {
+                // Filtrer les tâches qui sont soit running, soit très récentes (moins de 5 min)
+                const now = new Date();
+                const activeTasks = data.tasks.filter(task => {
+                    // Si la tâche est en cours
+                    if (task.status === 'running' || task.status === 'pending' || task.status === 'started') {
+                        return true;
+                    }
+                    
+                    // Ou si elle vient de se terminer (moins de 2 minutes)
+                    if (task.completed_at || task.started_at) {
+                        const taskTime = new Date(task.completed_at || task.started_at);
+                        const diffMinutes = (now - taskTime) / (1000 * 60);
+                        return diffMinutes < 2; // Afficher pendant 2 minutes après completion
+                    }
+                    
+                    return false;
+                });
+                
+                if (activeTasks.length > 0) {
+                    displayActiveTasksDetails(activeTasks);
+                } else {
+                    document.getElementById('active-tasks-list').innerHTML = `
+                        <div class="text-center text-muted py-4">
+                            😴 Aucune tâche en cours d'exécution
+                            <br><small>Les tâches récentes s'affichent ici pendant 2 minutes</small>
+                        </div>
+                    `;
+                }
+            } else {
+                document.getElementById('active-tasks-list').innerHTML = `
+                    <div class="alert alert-info">
+                        <strong>⚡ Monitoring Celery</strong><br>
+                        <small>Consultez Flower pour plus de détails: <a href="http://localhost:5555" target="_blank">http://localhost:5555</a></small>
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erreur récupération tâches actives:', error);
+            document.getElementById('active-tasks-list').innerHTML = `
+                <div class="alert alert-warning">
+                    <strong>⚠️ Erreur de récupération</strong><br>
+                    <small>Consultez <a href="http://localhost:5555" target="_blank">Flower</a> pour le monitoring en temps réel</small>
+                </div>
+            `;
+        });
+}
+
+function displayActiveTasksDetails(tasks) {
+    const container = document.getElementById('active-tasks-list');
+    
+    // Vider le conteneur au début
+    if (container.innerHTML.includes('Aucune tâche') || container.innerHTML.includes('Monitoring Celery')) {
+        container.innerHTML = '';
+    }
+    
+    tasks.forEach(task => {
+        // Créer ou mettre à jour chaque tâche
+        updateSingleTaskDisplay(task);
+    });
+}
+
+
+function updateSingleTaskDisplay(task) {
+    // Récupérer le statut détaillé en temps réel
+    fetchTaskStatus(task.task_id).then(status => {
+        // Déterminer les valeurs d'affichage
+        let progressPercent = 0;
+        let statusText = task.status;
+        let phase = '';
+        let badgeClass = 'secondary';
+        let badgeText = 'En attente';
+        let progressClass = 'bg-info';
+        
+        if (status && status.success !== false) {
+            progressPercent = status.unified_progress || status.progress || 0;
+            statusText = status.unified_status || status.status || statusText;
+            phase = status.meta?.phase || status.celery_info?.phase || '';
+        }
+        
+        // Adapter selon le statut de la tâche
+        if (task.status === 'completed') {
+            badgeClass = 'success';
+            badgeText = 'Terminé';
+            progressClass = 'bg-success';
+            progressPercent = 100;
+        } else if (task.status === 'failed') {
+            badgeClass = 'danger';
+            badgeText = 'Échoué';
+            progressClass = 'bg-danger';
+        } else if (task.status === 'running') {
+            badgeClass = 'warning';
+            badgeText = 'En cours';
+            progressClass = 'bg-warning';
+        }
+        
+        const taskHtml = `
+            <div class="card mb-3 border-${badgeClass}" id="active-task-${task.task_id}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <h6 class="card-title mb-1">
+                                ${task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : '⚡'} 
+                                ${task.task_name}
+                            </h6>
+                            <small class="text-muted">🎯 ${task.target}</small>
+                            ${phase ? `<br><small class="text-info">📍 Phase: ${phase}</small>` : ''}
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-${badgeClass} ${badgeClass === 'warning' ? 'text-dark' : ''}">${badgeText}</span><br>
+                            <small class="text-muted">${task.started_at}</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Barre de progression dynamique -->
+                    <div class="progress mb-2" style="height: 25px;">
+                        <div class="progress-bar ${task.status === 'running' ? 'progress-bar-striped progress-bar-animated' : ''} ${progressClass}" 
+                             role="progressbar" 
+                             style="width: ${progressPercent}%"
+                             id="progress-${task.task_id}">
+                            ${progressPercent}%
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted" id="status-text-${task.task_id}">
+                            📊 ${statusText}
+                        </small>
+                        <div>
+                            <a href="/tasks/${task.task_id}/status" class="btn btn-sm btn-outline-primary">
+                                👁️ Voir détails
+                            </a>
+                            ${task.status === 'running' ? 
+                                `<button class="btn btn-sm btn-outline-danger" onclick="cancelTask('${task.task_id}')">🛑 Annuler</button>` : 
+                                `<button class="btn btn-sm btn-outline-warning" onclick="hideTaskFromHistory('${task.task_id}')">🗑️ Masquer</button>`
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        const existingTask = document.getElementById(`active-task-${task.task_id}`);
+        const container = document.getElementById('active-tasks-list');
+        
+        if (existingTask) {
+            existingTask.outerHTML = taskHtml;
+        } else {
+            container.innerHTML += taskHtml;
+        }
+    }).catch(error => {
+        console.error(`❌ Erreur mise à jour tâche ${task.task_id}:`, error);
+    });
+}
+
+
+
+function cancelTask(taskId) {
+    if (!confirm('⚠️ Êtes-vous sûr de vouloir annuler cette tâche ?')) {
+        return;
+    }
+    
+    fetch(`/tasks/api/${taskId}/cancel`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('✅ Tâche annulée avec succès', 'success');
+            // Actualiser le dashboard
+            setTimeout(() => refreshDashboard(), 1000);
+        } else {
+            showNotification('❌ Erreur: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('❌ Erreur annulation:', error);
+        showNotification('❌ Erreur de connexion', 'danger');
+    });
+}
+
+function showDefaultStats() {
+    // Afficher des stats par défaut en cas d'erreur
+    document.getElementById('total-active').textContent = '0';
+    document.getElementById('total-scheduled').textContent = '0';
+    document.getElementById('total-completed').textContent = '?';
+    document.getElementById('total-failed').textContent = '?';
+    document.getElementById('active-count').textContent = '0';
+}
+
+function updateTasksList(tasks) {
+    const listContainer = document.getElementById('recent-tasks-list');
+    
+    if (tasks.length === 0) {
+        listContainer.innerHTML = `
+            <div class="text-center text-muted py-4">
+                📭 Aucune tâche dans l'historique récent
+                <br><small>Les tâches terminées apparaîtront ici</small>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = `
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Nom</th>
+                        <th>Cible</th>
+                        <th>Statut</th>
+                        <th>Utilisateur</th>
+                        <th>Démarré</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    tasks.forEach(task => {
+        const statusClass = task.status === 'completed' ? 'success' : 
+                           task.status === 'running' ? 'warning' : 
+                           task.status === 'failed' ? 'danger' : 'secondary';
+        
+        const statusIcon = task.status === 'completed' ? '✅' : 
+                          task.status === 'running' ? '⚡' : 
+                          task.status === 'failed' ? '❌' : '⏳';
+        
+        html += `
+            <tr class="task-item" data-task-id="${task.task_id}">
+                <td>
+                    <span class="badge bg-${statusClass}">
+                        ${task.task_type || 'Task'}
+                    </span>
+                </td>
+                <td><strong>${task.task_name || 'Sans nom'}</strong></td>
+                <td><small>${task.target || 'N/A'}</small></td>
+                <td><span class="text-${statusClass}">${statusIcon} ${task.status}</span></td>
+                <td><small>${task.username || 'Système'}</small></td>
+                <td><small>${task.started_at || 'N/A'}</small></td>
+                <td>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <a href="/tasks/${task.task_id}/status" class="btn btn-outline-info" title="Voir détails">👁️</a>
+                        <button class="btn btn-outline-warning" onclick="hideTaskFromHistory('${task.task_id}')" title="Supprimer">🗑️</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    listContainer.innerHTML = html;
+}
+
 function hideTaskFromHistory(taskId) {
-    console.log(`🗑️ Tentative masquage: ${taskId}`);
+    console.log(`🗑️ Masquage tâche: ${taskId}`);
     
     if (!confirm('Voulez-vous vraiment masquer cette tâche de l\'historique ?')) {
         return;
     }
     
-    // Afficher le loading
-    const button = event.target.closest('button');
-    const originalHtml = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    button.disabled = true;
-    
     fetch(`/tasks/api/task/${taskId}/hide-from-history`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
         }
     })
-    .then(response => {
-        console.log(`📡 Réponse HTTP: ${response.status}`);
-        return response.json();
-    })
+    .then(response => response.json())
     .then(data => {
-        console.log('📊 Données reçues:', data);
-        
         if (data.success) {
-            showNotification(data.message || 'Tâche masquée avec succès', 'success');
+            showNotification('✅ Tâche masquée avec succès', 'success');
             
             // Supprimer visuellement l'élément
-            const taskElement = button.closest('.task-item, .border, .mb-2');
+            const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
             if (taskElement) {
                 taskElement.style.transition = 'opacity 0.3s';
                 taskElement.style.opacity = '0';
                 setTimeout(() => {
                     taskElement.remove();
-                    updateTaskCounts();
+                    // Actualiser le compteur
+                    const remaining = document.querySelectorAll('.task-item').length - 1;
+                    document.getElementById('history-count').textContent = remaining;
                 }, 300);
-            } else {
-                // Fallback: recharger la page
-                setTimeout(() => window.location.reload(), 1000);
             }
         } else {
-            console.error('❌ Erreur serveur:', data.error);
-            showNotification(`Erreur: ${data.error}`, 'error');
-            button.innerHTML = originalHtml;
-            button.disabled = false;
+            showNotification('❌ Erreur: ' + data.error, 'danger');
         }
     })
     .catch(error => {
         console.error('❌ Erreur réseau:', error);
-        showNotification('Erreur de connexion au serveur', 'error');
-        button.innerHTML = originalHtml;
-        button.disabled = false;
+        showNotification('❌ Erreur de connexion', 'danger');
     });
 }
 
-// Fonction corrigée pour purger l'historique
-function purgeTaskHistory() {
-    console.log('🗑️ Tentative purge historique');
+
+function purgeAllTasks() {
+    console.log('🗑️ Tentative purge complète');
     
-    if (!confirm('⚠️ ATTENTION: Voulez-vous vraiment masquer TOUTES les tâches terminées de l\'historique ?\n\nCette action est irréversible.')) {
+    if (!confirm('⚠️ ATTENTION: Voulez-vous vraiment supprimer TOUTES les tâches terminées de l\'historique ?\n\nCette action est irréversible.')) {
         return;
     }
     
     // Afficher le loading sur le bouton
-    const purgeButton = document.querySelector('button[onclick="purgeTaskHistory()"]');
-    if (purgeButton) {
-        purgeButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Purge en cours...';
-        purgeButton.disabled = true;
-    }
+    const purgeButton = document.querySelector('button[onclick="purgeAllTasks()"]');
+    const originalText = purgeButton.innerHTML;
+    purgeButton.innerHTML = '🔄 Purge en cours...';
+    purgeButton.disabled = true;
     
     fetch('/tasks/api/cleanup', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
-        }
+        },
+        body: JSON.stringify({
+            days: 0  // 0 = supprimer toutes les tâches terminées
+        })
     })
     .then(response => {
         console.log(`📡 Réponse purge: ${response.status}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         return response.json();
     })
     .then(data => {
         console.log('📊 Résultat purge:', data);
         
         if (data.success) {
-            showNotification(data.message, 'success');
+            showNotification(`✅ ${data.message}`, 'success');
             
-            // Recharger la page après 1 seconde
+            // Recharger la page après 2 secondes
             setTimeout(() => {
                 window.location.reload();
-            }, 1000);
+            }, 2000);
         } else {
-            console.error('❌ Erreur purge:', data.error);
-            showNotification(`Erreur: ${data.error}`, 'error');
+            showNotification(`❌ Erreur: ${data.error}`, 'danger');
             
-            if (purgeButton) {
-                purgeButton.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Purger l\'historique';
-                purgeButton.disabled = false;
-            }
+            // Restaurer le bouton
+            purgeButton.innerHTML = originalText;
+            purgeButton.disabled = false;
         }
     })
     .catch(error => {
-        console.error('❌ Erreur réseau purge:', error);
-        showNotification('Erreur de connexion', 'error');
+        console.error('❌ Erreur purge:', error);
+        showNotification(`❌ Erreur: ${error.message}`, 'danger');
         
-        if (purgeButton) {
-            purgeButton.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Purger l\'historique';
-            purgeButton.disabled = false;
-        }
+        // Restaurer le bouton
+        purgeButton.innerHTML = originalText;
+        purgeButton.disabled = false;
     });
 }
 
-// Fonction pour afficher les notifications
 function showNotification(message, type) {
     console.log(`📢 Notification: ${message} (${type})`);
     
@@ -330,36 +705,10 @@ function showNotification(message, type) {
     }, 5000);
 }
 
-// Fonction pour mettre à jour les compteurs
-function updateTaskCounts() {
-    // Recompter les tâches visibles
-    const visibleTasks = document.querySelectorAll('.task-item:not([style*="display: none"])').length;
-    const historyCountElement = document.querySelector('#historyCount');
-    if (historyCountElement) {
-        historyCountElement.textContent = visibleTasks;
-    }
-}
-
-// Test de connectivité au démarrage
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Dashboard chargé - Test connectivité...');
-    
-    fetch('/tasks/api/real-stats')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                console.log('✅ Connectivité API confirmée');
-            } else {
-                console.warn('⚠️ API répond mais avec erreur:', data.error);
-            }
-        })
-        .catch(error => {
-            console.error('❌ Problème connectivité API:', error);
-            showNotification('Problème de connexion avec le serveur', 'error');
-        });
+// Nettoyer l'interval quand on quitte la page
+window.addEventListener('beforeunload', function() {
+    stopAutoRefresh();
 });
-
-
 </script>
 
 {% endblock %}

@@ -1,4 +1,3 @@
-# docker-compose.yml - Toolbox v2 avec architecture propre
 
 services:
   # ===== REDIS (Broker Celery) =====
@@ -68,28 +67,6 @@ services:
       - graylog_data:/usr/share/graylog/data
     restart: unless-stopped
 
-  # ===== OPENVAS (Scanner de vulnérabilités) =====
-  openvas:
-    image: mikesplain/openvas:latest
-    container_name: toolbox-openvas
-    ports:
-      - "9392:9392"   # Interface web OpenVAS
-      - "9390:9390"   # Port OMP
-    environment:
-      - OMP_USERNAME=admin
-      - OMP_PASSWORD=admin
-    volumes:
-      - openvas_data:/var/lib/openvas
-    networks:
-      - toolbox-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "omp", "--ping"]
-      interval: 60s
-      timeout: 30s
-      retries: 5
-      start_period: 300s
-
   # ===== APPLICATION PRINCIPALE =====
   toolbox-app:
     build: 
@@ -106,10 +83,6 @@ services:
       - FLASK_SECRET_KEY=dev-secret-change-in-production
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - OPENVAS_HOST=openvas
-      - OPENVAS_PORT=9390
-      - OPENVAS_USER=admin
-      - OPENVAS_PASSWORD=admin
       - GRAYLOG_HOST=graylog
       - GRAYLOG_PORT=12201
     ports:
@@ -119,7 +92,6 @@ services:
     depends_on:
       - redis
       - graylog
-      - openvas
     restart: unless-stopped
     logging:
       driver: "gelf"
@@ -140,15 +112,10 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - OPENVAS_HOST=openvas
-      - OPENVAS_PORT=9390
-      - OPENVAS_USER=admin
-      - OPENVAS_PASSWORD=admin
     networks:
       - toolbox-network
     depends_on:
       - redis
-      - openvas
     command: celery -A celery_app worker --loglevel=info --concurrency=4
     restart: unless-stopped
     logging:
@@ -217,8 +184,6 @@ volumes:
   mongodb_data:
     driver: local
   graylog_data:
-    driver: local
-  openvas_data:
     driver: local
   dvwa_mysql_data:
     driver: local

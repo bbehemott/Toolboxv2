@@ -6,15 +6,14 @@ import time
 import json
 from typing import Dict, Any
 
-# ✅ CORRECTION : Imports pour nouvelle architecture
+# Imports pour nouvelle architecture
 from modules.decouverte_reseau import DecouverteReseauModule
-from core.nmap_wrapper import NmapWrapper
 from database import DatabaseManager
 from config import config
 
 logger = logging.getLogger(__name__)
 
-# ✅ NOUVELLE FONCTION : Accès à la base unifiée
+# Accès à la base unifiée
 def get_db_manager():
     """Accès au gestionnaire de base de données unifié"""
     try:
@@ -24,7 +23,7 @@ def get_db_manager():
         logger.error(f"Erreur accès BDD: {e}")
         return None
 
-# ===== TÂCHE DÉCOUVERTE RÉSEAU CORRIGÉE =====
+# ===== TÂCHE DÉCOUVERTE RÉSEAU =====
 @celery_app.task(bind=True, name='tasks.discover_network')
 def discover_network(self, target: str, options: Dict = None):
     """Tâche asynchrone pour la découverte réseau"""
@@ -35,7 +34,7 @@ def discover_network(self, target: str, options: Dict = None):
     try:
         logger.info(f"🌐 [Celery] Début découverte réseau: {target}")
         
-        # ✅ CORRECTION : Mise à jour du statut via le nouveau système
+        # Mise à jour du statut via le nouveau système
         db.update_task_status(
             task_id=self.request.id,
             status='running',
@@ -83,7 +82,7 @@ def discover_network(self, target: str, options: Dict = None):
             'result_data': result
         }
         
-        # ✅ CORRECTION : Mettre à jour le statut final dans la BDD unifiée
+        # Mettre à jour le statut final dans la BDD unifiée
         if result.get('success'):
             logger.info(f"✅ [Celery] Découverte terminée: {target}")
             progress_callback('Terminé avec succès', 100)
@@ -112,201 +111,6 @@ def discover_network(self, target: str, options: Dict = None):
         logger.error(f"💥 [Celery] Exception découverte {target}: {e}")
         
         # Sauvegarder l'erreur
-        db.update_task_status(
-            task_id=self.request.id,
-            status='failed',
-            error_message=str(e)
-        )
-        
-        self.update_state(
-            state='FAILURE',
-            meta={
-                'status': f'Erreur: {str(e)}',
-                'target': target,
-                'error': str(e)
-            }
-        )
-        raise
-
-# ===== TÂCHE NMAP CORRIGÉE =====
-@celery_app.task(bind=True, name='tasks.nmap_scan')
-def nmap_scan(self, target: str, scan_type: str = 'quick', ports: str = None):
-    """Tâche asynchrone pour scan Nmap"""
-    db = get_db_manager()
-    if not db:
-        raise Exception("Impossible d'accéder à la base de données")
-    
-    try:
-        logger.info(f"🔍 [Celery] Début scan Nmap: {target} ({scan_type})")
-        
-        # Mise à jour initiale
-        db.update_task_status(
-            task_id=self.request.id,
-            status='running',
-            progress=0
-        )
-        
-        self.update_state(
-            state='PROGRESS',
-            meta={'status': 'Initialisation Nmap...', 'progress': 10, 'target': target}
-        )
-        
-        # Initialiser Nmap
-        nmap = NmapWrapper()
-        
-        # Mise à jour progression
-        self.update_state(
-            state='PROGRESS',
-            meta={'status': f'Scan {scan_type} en cours...', 'progress': 30, 'target': target}
-        )
-        
-        # Exécuter selon le type
-        if scan_type == 'quick':
-            result = nmap.quick_scan(target)
-        elif scan_type == 'port':
-            result = nmap.port_scan(target, ports or "1-1000")
-        elif scan_type == 'service':
-            result = nmap.service_enumeration(target, ports)
-        elif scan_type == 'vulnerability':
-            result = nmap.vulnerability_scan(target)
-        else:
-            result = nmap.quick_scan(target)
-        
-        # Finalisation
-        self.update_state(
-            state='PROGRESS',
-            meta={'status': 'Traitement des résultats...', 'progress': 90, 'target': target}
-        )
-        
-        final_result = {
-            'task_id': self.request.id,
-            'target': target,
-            'scan_type': scan_type,
-            'success': result.get('success', False),
-            'completed_at': time.time(),
-            'result_data': result
-        }
-        
-        # Mettre à jour le statut final
-        if result.get('success'):
-            logger.info(f"✅ [Celery] Scan Nmap terminé: {target}")
-            
-            # Créer résumé selon le type
-            if scan_type == 'port':
-                ports_found = len(result.get('open_ports', []))
-                summary = f"Trouvé {ports_found} port(s) ouvert(s)"
-            elif scan_type == 'service':
-                services_found = len(result.get('services', []))
-                summary = f"Identifié {services_found} service(s)"
-            elif scan_type == 'vulnerability':
-                vulns_found = len(result.get('vulnerabilities', []))
-                summary = f"Trouvé {vulns_found} vulnérabilité(s)"
-            else:
-                ports_found = len(result.get('open_ports', []))
-                summary = f"Scan rapide: {ports_found} port(s)"
-            
-            db.update_task_status(
-                task_id=self.request.id,
-                status='completed',
-                progress=100,
-                result_summary=summary
-            )
-        else:
-            logger.error(f"❌ [Celery] Erreur Nmap: {result.get('error')}")
-            db.update_task_status(
-                task_id=self.request.id,
-                status='failed',
-                error_message=result.get('error', 'Erreur scan Nmap')
-            )
-            
-        return final_result
-        
-    except Exception as e:
-        logger.error(f"💥 [Celery] Exception scan Nmap {target}: {e}")
-        
-        db.update_task_status(
-            task_id=self.request.id,
-            status='failed',
-            error_message=str(e)
-        )
-        
-        self.update_state(
-            state='FAILURE',
-            meta={
-                'status': f'Erreur: {str(e)}',
-                'target': target,
-                'error': str(e)
-            }
-        )
-        raise
-
-# ===== TÂCHE SCAN VULNÉRABILITÉS =====
-@celery_app.task(bind=True, name='tasks.vulnerability_scan')
-def vulnerability_scan(self, target: str, scripts: str = 'vuln'):
-    """Tâche asynchrone pour scan de vulnérabilités avec Nmap NSE"""
-    db = get_db_manager()
-    if not db:
-        raise Exception("Impossible d'accéder à la base de données")
-    
-    try:
-        logger.info(f"⚠️ [Celery] Début scan vulnérabilités: {target}")
-        
-        db.update_task_status(
-            task_id=self.request.id,
-            status='running',
-            progress=0
-        )
-        
-        self.update_state(
-            state='PROGRESS',
-            meta={'status': 'Initialisation scan vulnérabilités...', 'progress': 10, 'target': target}
-        )
-        
-        # Utiliser le wrapper Nmap pour les vulnérabilités
-        nmap = NmapWrapper()
-        
-        self.update_state(
-            state='PROGRESS',
-            meta={'status': f'Scripts NSE {scripts}...', 'progress': 40, 'target': target}
-        )
-        
-        result = nmap.vulnerability_scan(target, scripts)
-        
-        final_result = {
-            'task_id': self.request.id,
-            'target': target,
-            'scripts': scripts,
-            'success': result.get('success', False),
-            'completed_at': time.time(),
-            'result_data': result
-        }
-        
-        if result.get('success'):
-            logger.info(f"✅ [Celery] Scan vulnérabilités terminé: {target}")
-            
-            vulns = result.get('vulnerabilities', [])
-            high_severity = result.get('high_severity', 0)
-            summary = f"Trouvé {len(vulns)} vulnérabilité(s), {high_severity} critiques"
-            
-            db.update_task_status(
-                task_id=self.request.id,
-                status='completed',
-                progress=100,
-                result_summary=summary
-            )
-        else:
-            logger.error(f"❌ [Celery] Erreur scan vulnérabilités: {result.get('error')}")
-            db.update_task_status(
-                task_id=self.request.id,
-                status='failed',
-                error_message=result.get('error', 'Erreur scan vulnérabilités')
-            )
-            
-        return final_result
-        
-    except Exception as e:
-        logger.error(f"💥 [Celery] Exception scan vulnérabilités {target}: {e}")
-        
         db.update_task_status(
             task_id=self.request.id,
             status='failed',
@@ -386,7 +190,7 @@ def test_task(self, duration: int = 10):
         )
         raise
 
-# ===== UTILITAIRES =====
+# ===== UTILITAIRE =====
 def get_task_status(task_id: str) -> Dict[str, Any]:
     """Récupérer le statut d'une tâche Celery"""
     try:

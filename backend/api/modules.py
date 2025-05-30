@@ -1,5 +1,5 @@
 from flask import Blueprint, request, render_template, flash, redirect, url_for, session, current_app, jsonify
-from auth import login_required, pentester_required
+from auth import login_required
 from services.task_manager import TaskManager
 import logging
 
@@ -55,94 +55,6 @@ def network_discovery():
     
     return render_template('modules/discovery.html')
 
-# ===== SCAN NMAP =====
-
-@modules_bp.route('/nmap', methods=['GET', 'POST'])
-@login_required
-def nmap_scan():
-    """Module de scan Nmap"""
-    if request.method == 'POST':
-        target = request.form.get('target', '').strip()
-        scan_type = request.form.get('scan_type', 'quick')
-        ports = request.form.get('ports', '').strip()
-        
-        if not target:
-            flash('Veuillez indiquer une cible à scanner', 'warning')
-            return render_template('modules/nmap.html')
-        
-        try:
-            # Validation de la cible
-            from core.nmap_wrapper import NmapWrapper
-            is_valid, validation_msg = NmapWrapper.validate_target(target)
-            
-            if not is_valid:
-                flash(f'Cible invalide: {validation_msg}', 'danger')
-                return render_template('modules/nmap.html')
-            
-            # Lancer la tâche Nmap
-            task_manager = TaskManager(current_app.db)
-            task_id = task_manager.start_nmap_task(
-                target=target,
-                scan_type=scan_type,
-                ports=ports,
-                user_id=session.get('user_id')
-            )
-            
-            if task_id:
-                flash(f'Scan Nmap lancé ! Type: {scan_type}', 'success')
-                return redirect(url_for('tasks.task_status', task_id=task_id))
-            else:
-                flash('Erreur lors du lancement du scan', 'danger')
-                
-        except Exception as e:
-            logger.error(f"Erreur scan Nmap: {e}")
-            flash(f'Erreur: {str(e)}', 'danger')
-    
-    return render_template('modules/nmap.html')
-
-# ===== SCAN DE VULNÉRABILITÉS =====
-
-@modules_bp.route('/vulnerability-scan', methods=['GET', 'POST'])
-@pentester_required
-def vulnerability_scan():
-    """Module de scan de vulnérabilités (Nmap NSE)"""
-    if request.method == 'POST':
-        target = request.form.get('target', '').strip()
-        script_category = request.form.get('script_category', 'vuln')
-        
-        if not target:
-            flash('Veuillez indiquer une cible à scanner', 'warning')
-            return render_template('modules/vulnerability_scan.html')
-        
-        try:
-            # Validation de la cible
-            from core.nmap_wrapper import NmapWrapper
-            is_valid, validation_msg = NmapWrapper.validate_target(target)
-            
-            if not is_valid:
-                flash(f'Cible invalide: {validation_msg}', 'danger')
-                return render_template('modules/vulnerability_scan.html')
-            
-            # Lancer la tâche de scan de vulnérabilités
-            task_manager = TaskManager(current_app.db)
-            task_id = task_manager.start_vulnerability_task(
-                target=target,
-                scripts=script_category,
-                user_id=session.get('user_id')
-            )
-            
-            if task_id:
-                flash(f'Scan de vulnérabilités lancé ! Scripts: {script_category}', 'success')
-                return redirect(url_for('tasks.task_status', task_id=task_id))
-            else:
-                flash('Erreur lors du lancement du scan', 'danger')
-                
-        except Exception as e:
-            logger.error(f"Erreur scan vulnérabilités: {e}")
-            flash(f'Erreur: {str(e)}', 'danger')
-    
-    return render_template('modules/vulnerability_scan.html')
-
 # ===== API ENDPOINTS =====
 
 @modules_bp.route('/api/available')
@@ -157,22 +69,6 @@ def api_available_modules():
             'icon': '🌐',
             'url': url_for('modules.network_discovery'),
             'min_role': 'viewer'
-        },
-        {
-            'name': 'nmap',
-            'title': 'Scan Nmap',
-            'description': 'Scan de ports et énumération de services',
-            'icon': '🔍',
-            'url': url_for('modules.nmap_scan'),
-            'min_role': 'viewer'
-        },
-        {
-            'name': 'vulnerability',
-            'title': 'Scan Vulnérabilités',
-            'description': 'Détection de vulnérabilités avec scripts NSE',
-            'icon': '⚠️',
-            'url': url_for('modules.vulnerability_scan'),
-            'min_role': 'pentester'
         }
     ]
     

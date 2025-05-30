@@ -23,11 +23,14 @@ def tasks_dashboard():
         else:
             tasks = current_app.db.get_tasks(user_id=user_id, include_hidden=False, limit=50)
         
+        logger.info(f"Dashboard tâches: {len(tasks)} tâches trouvées pour user {user_id} (role: {user_role})")
+        
         return render_template('tasks/dashboard.html', tasks=tasks)
         
     except Exception as e:
         logger.error(f"Erreur dashboard tâches: {e}")
         return render_template('tasks/dashboard.html', tasks=[])
+
 
 @tasks_bp.route('/<task_id>/status')
 @login_required
@@ -59,28 +62,83 @@ def task_results(task_id):
 @tasks_bp.route('/api/<task_id>/status')
 @login_required
 def api_task_status(task_id):
-    """API pour récupérer le statut d'une tâche"""
+    """API pour récupérer le statut d'une tâche - VERSION CORRIGÉE"""
     try:
         task_manager = TaskManager(current_app.db)
+        
         status = task_manager.get_task_status(task_id)
         
         if not status:
             return {
                 'success': False,
-                'error': 'Tâche non trouvée'
+                'error': 'Tâche non trouvée',
+                'state': 'NOT_FOUND'
             }, 404
         
-        return {
+        response = {
             'success': True,
-            'status': status
+            'task_id': task_id,
+            'state': status.get('unified_state', status.get('celery_state', 'UNKNOWN')),
+            'status': status.get('unified_status', 'État inconnu'),
+            'progress': status.get('unified_progress', 0),
+            
+            # Informations détaillées
+            'meta': {
+                'target': status.get('target'),
+                'phase': status.get('celery_info', {}).get('phase', 'N/A'),
+                'task_name': status.get('task_name'),
+                'task_type': status.get('task_type')
+            },
+            
+            # Timestamps
+            'started_at': status.get('started_at'),
+            'completed_at': status.get('completed_at'),
+            
+            # Résultats si terminé
+            'result': status.get('result') if status.get('unified_state') == 'SUCCESS' else None,
+            'error': status.get('error') if status.get('unified_state') == 'FAILURE' else None
         }
+        
+        return response
         
     except Exception as e:
         logger.error(f"Erreur API statut tâche {task_id}: {e}")
         return {
             'success': False,
+            'error': str(e),
+            'state': 'ERROR'
+        }, 500
+
+
+@tasks_bp.route('/api/<task_id>/results')
+@login_required  
+def api_task_results(task_id):
+    """API pour récupérer les résultats d'une tâche terminée"""
+    try:
+        task_manager = TaskManager(current_app.db)
+        results = task_manager.get_task_results(task_id)
+        
+        if not results:
+            return {
+                'success': False,
+                'error': 'Résultats non disponibles'
+            }, 404
+            
+        return {
+            'success': True,
+            'results': results,
+            'task_id': task_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur résultats tâche {task_id}: {e}")
+        return {
+            'success': False,
             'error': str(e)
         }, 500
+
+
+
 
 @tasks_bp.route('/api/<task_id>/cancel', methods=['POST'])
 @login_required
@@ -155,6 +213,7 @@ def api_hide_task(task_id):
             'error': str(e)
         }, 500
 
+
 @tasks_bp.route('/api/list')
 @login_required
 def api_list_tasks():
@@ -163,9 +222,10 @@ def api_list_tasks():
         user_id = session.get('user_id')
         user_role = session.get('role')
         
-        # Paramètres de pagination
+        # Paramètres de pagination et filtrage
         limit = request.args.get('limit', 20, type=int)
         include_hidden = request.args.get('include_hidden', False, type=bool)
+        active_only = request.args.get('active_only', False, type=bool)
         
         # Admin voit toutes les tâches
         if user_role == 'admin' and request.args.get('all_users', False, type=bool):
@@ -180,6 +240,11 @@ def api_list_tasks():
                 limit=limit
             )
         
+        # Filtrer les tâches actives si demandé
+        if active_only:
+            active_statuses = ['running', 'pending', 'started']
+            tasks = [task for task in tasks if task.get('status') in active_statuses]
+        
         return {
             'success': True,
             'tasks': tasks,
@@ -192,6 +257,7 @@ def api_list_tasks():
             'success': False,
             'error': str(e)
         }, 500
+
 
 @tasks_bp.route('/api/stats')
 @login_required
@@ -213,34 +279,70 @@ def api_tasks_stats():
             'error': str(e)
         }, 500
 
+
+
 @tasks_bp.route('/api/cleanup', methods=['POST'])
 @admin_required
 def api_cleanup_tasks():
     """API pour nettoyer les anciennes tâches (admin seulement)"""
     try:
-        days = request.json.get('days', 30)
+        # Récupérer les données JSON
+        data = request.get_json() if request.is_json else {}
         
-        if not isinstance(days, int) or days < 1:
+        # Valeur par défaut si pas de JSON ou pas de paramètre days
+        days = 30  # Par défaut
+        
+        if data and 'days' in data:
+            days = data['days']
+        
+        # Validation du paramètre days
+        if not isinstance(days, (int, float)):
             return {
                 'success': False,
-                'error': 'Nombre de jours invalide'
-            }
+                'error': 'Le paramètre "days" doit être un nombre'
+            }, 400
         
-        cleaned_count = current_app.db.cleanup_old_tasks(days)
+        # Convertir en entier
+        days = int(days)
+        
+        # Validation de la plage
+        if days < 0:
+            return {
+                'success': False,
+                'error': 'Le nombre de jours ne peut pas être négatif'
+            }, 400
+        
+        if days > 365:
+            return {
+                'success': False,
+                'error': 'Le nombre de jours ne peut pas dépasser 365'
+            }, 400
+        
+        # Effectuer le nettoyage
+        if days == 0:
+            # Cas spécial : supprimer toutes les tâches terminées
+            cleaned_count = current_app.db.cleanup_all_completed_tasks()
+            message = f'Toutes les tâches terminées ont été supprimées ({cleaned_count} tâches)'
+        else:
+            # Supprimer les tâches plus anciennes que X jours
+            cleaned_count = current_app.db.cleanup_old_tasks(days)
+            message = f'Tâches de plus de {days} jour(s) supprimées ({cleaned_count} tâches)'
+        
+        logger.info(f"Nettoyage tâches: {cleaned_count} tâches supprimées (>{days} jours)")
         
         return {
             'success': True,
-            'message': f'{cleaned_count} tâches nettoyées',
-            'cleaned_count': cleaned_count
+            'message': message,
+            'cleaned_count': cleaned_count,
+            'days': days
         }
         
     except Exception as e:
         logger.error(f"Erreur nettoyage tâches: {e}")
         return {
             'success': False,
-            'error': str(e)
+            'error': f'Erreur interne: {str(e)}'
         }, 500
-
 
 
 @tasks_bp.route('/api/real-stats')

@@ -101,10 +101,6 @@ def register_blueprints(app):
     # API tâches (préfixe /tasks pour compatibilité templates) 
     from api.tasks import tasks_bp
     app.register_blueprint(tasks_bp, url_prefix='/tasks')
-    
-    # API scans (préfixe /scans pour compatibilité templates)
-    from api.scans import scans_bp
-    app.register_blueprint(scans_bp, url_prefix='/scans')
 
 
 def register_error_handlers(app):
