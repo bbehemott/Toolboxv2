@@ -1,4 +1,4 @@
-# modules/decouverte_reseau.py - Module Découverte Réseau
+# modules/decouverte_reseau.py - Module Découverte Réseau optimisé
 import logging
 import re
 from typing import Dict, List, Optional
@@ -18,6 +18,21 @@ class DecouverteReseauModule:
         self.nmap = NmapWrapper()
         self.name = "Découverte Réseau"
         self.description = "Cartographie complète du réseau - identification des hôtes actifs"
+    
+    @staticmethod
+    def extract_ip_from_host(host: str) -> str:
+        """
+        Extrait l'IP d'un string host Nmap
+        
+        Args:
+            host: Format Nmap "hostname (ip)" ou juste "ip"
+            
+        Returns:
+            IP propre
+        """
+        # Pattern simplifié pour extraire IP entre parenthèses
+        ip_match = re.search(r'\(([\d\.]+)\)', host)
+        return ip_match.group(1) if ip_match else host.strip()
     
     def execute_full_discovery(self, target: str, options: Optional[Dict] = None) -> Dict:
         """
@@ -81,19 +96,14 @@ class DecouverteReseauModule:
                 active_hosts = discovery_result.get('hosts_up', [])
                 logger.info(f"[Module Découverte] Phase 1 terminée: {len(active_hosts)} hôtes trouvés")
                 
-
+                # PHASE 2: Détails des hôtes (si activé)
                 if default_options['port_discovery'] and active_hosts:
                     logger.info(f"[Module Découverte] Phase 2: Découverte ports sur {len(active_hosts)} hôtes")
     
                     for host in active_hosts[:5]:  # Limiter à 5 hôtes
-                        # CORRECTION: Extraire seulement l'IP depuis "dvwa (172.18.0.3)"
-                        if '(' in host and ')' in host:
-                            # Format: "dvwa (172.18.0.3)" -> extraire "172.18.0.3"
-                            ip_match = re.search(r'\(([\d\.]+)\)', host)
-                            target_ip = ip_match.group(1) if ip_match else host
-                        else:
-                            target_ip = host
-                            
+                        # ✅ SIMPLIFICATION : Utilisation de la méthode statique
+                        target_ip = self.extract_ip_from_host(host)
+                        
                         logger.info(f"[Module Découverte] Scan ports sur {target_ip}")
                         host_info = self._discover_host_details(target_ip, default_options)
                         results['hosts'].append(host_info)
@@ -134,10 +144,8 @@ class DecouverteReseauModule:
                 'scan_success': True
             }
             
-            # DEBUG: Ajouter ces logs pour voir ce qui se passe
-            logger.info(f"[DEBUG] Options reçues dans _discover_host_details: {options}")
-            logger.info(f"[DEBUG] service_detection = {options.get('service_detection', False)}")
-            logger.info(f"[DEBUG] aggressive = {options.get('aggressive', False)}")
+            logger.info(f"[DEBUG] Analyse détaillée de {host}")
+            logger.info(f"[DEBUG] Options: service_detection={options.get('service_detection')}, aggressive={options.get('aggressive')}")
             
             # Scan rapide des ports les plus courants
             port_result = self.nmap.port_scan(host, "21,22,23,25,53,80,110,135,139,143,443,445,993,995,1723,3389,5000,8080,9000")
@@ -145,25 +153,23 @@ class DecouverteReseauModule:
             if port_result['success']:
                 host_info['ports'] = port_result.get('open_ports', [])
                 
-                # Si option service detection activée
+                # Énumération des services (si demandée)
                 if options.get('service_detection', False) and host_info['ports']:
-                    logger.info(f"[DEBUG] Lancement service enumeration sur {host}")
+                    logger.info(f"[DEBUG] Énumération services sur {host}")
                     service_result = self.nmap.service_enumeration(host)
-                    logger.info(f"[DEBUG] Résultat service enum: {service_result.get('success')}")
+                    
                     if service_result['success']:
                         host_info['services'] = service_result.get('services', [])
-                        logger.info(f"[DEBUG] Services trouvés: {host_info['services']}")
-        
                         host_info['service_raw_output'] = service_result.get('raw_output', '')
+                        logger.info(f"[DEBUG] {len(host_info['services'])} services trouvés")
                     else:
-                        logger.error(f"[DEBUG] Échec service enum: {service_result.get('error')}")
-                else:
-                    logger.warning(f"[DEBUG] Service detection sautée: service_detection={options.get('service_detection')}, ports={len(host_info.get('ports', []))}")
+                        logger.error(f"[DEBUG] Échec énumération services: {service_result.get('error')}")
 
+                # Mode agressif (si demandé)
                 if options.get('aggressive', False) and host_info['ports']:
                     logger.info(f"[DEBUG] Mode agressif activé sur {host}")
         
-        # 1. Détection de l'OS
+                    # 1. Détection de l'OS
                     try:
                        os_result = self.nmap.os_detection(host)
                        if os_result['success']:
@@ -176,23 +182,22 @@ class DecouverteReseauModule:
                         host_info['os'] = f'Erreur OS: {str(e)}'
                         logger.error(f"[DEBUG] Erreur OS detection: {e}")
         
-        # 2. Scripts NSE agressifs pour plus d'infos
+                    # 2. Scripts NSE agressifs pour plus d'infos
                     try:
                        aggressive_result = self.nmap.aggressive_scan(host)
                        if aggressive_result['success']:
                            host_info['additional_info'] = aggressive_result.get('extra_info', [])
-                           logger.info(f"[DEBUG] Infos agressives trouvées: {len(host_info['additional_info'])}")
+                           logger.info(f"[DEBUG] {len(host_info['additional_info'])} infos agressives trouvées")
                        else:
                            host_info['additional_info'] = []
                            logger.warning(f"[DEBUG] Échec scan agressif: {aggressive_result.get('error')}")
                     except Exception as e:
                         host_info['additional_info'] = [f'Erreur: {str(e)}']
                         logger.error(f"[DEBUG] Erreur aggressive scan: {e}")
-        
+                    
                     logger.info(f"[DEBUG] Mode agressif terminé sur {host}")
                 else:
                     logger.info(f"[DEBUG] Mode agressif sauté: aggressive={options.get('aggressive')}, ports={len(host_info.get('ports', []))}")
-    # ✅ FIN DU CODE MODE AGRESSIF ⬆️
 
             else:
                 host_info['scan_success'] = False
@@ -201,14 +206,13 @@ class DecouverteReseauModule:
             return host_info
             
         except Exception as e:
+            logger.error(f"[ERROR] Erreur analyse {host}: {e}")
             return {
                 'ip': host,
                 'status': 'error',
                 'scan_success': False,
                 'error': str(e)
             }
-
-
     
     def _generate_discovery_summary(self, results: Dict) -> Dict:
         """Génère un résumé de la découverte"""
