@@ -34,10 +34,6 @@ RUN apt-get update && apt-get install -y \
     \
     # Client PostgreSQL (pour futurs besoins)
     postgresql-client \
-    \
-    # Ruby pour Metasploit
-    ruby \
-    ruby-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ===== INSTALLATION DOCKER CLI =====
@@ -46,12 +42,6 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /
     && apt-get update \
     && apt-get install -y docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
-
-# ===== INSTALLATION METASPLOIT =====
-RUN curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall \
-    && chmod 755 msfinstall \
-    && ./msfinstall \
-    && rm msfinstall
 
 # ===== CONFIGURATION DE L'APPLICATION =====
 WORKDIR /app

@@ -8,19 +8,21 @@ from typing import Dict, Any
 
 # Imports pour nouvelle architecture
 from modules.decouverte_reseau import DecouverteReseauModule
-from database import DatabaseManager
-from config import config
 
 logger = logging.getLogger(__name__)
 
-# Accès à la base unifiée
+# ===== ACCÈS À LA BASE DE DONNÉES =====
 def get_db_manager():
-    """Accès au gestionnaire de base de données unifié"""
+    """Accès simplifié au gestionnaire de base de données"""
     try:
+        # Import local pour éviter les dépendances circulaires
+        from database import DatabaseManager
+        from config import config
+        
         config_obj = config.get('development', config['default'])
         return DatabaseManager(config_obj.DATABASE_PATH)
     except Exception as e:
-        logger.error(f"Erreur accès BDD: {e}")
+        logger.error(f"❌ Erreur accès BDD dans Celery: {e}")
         return None
 
 # ===== TÂCHE DÉCOUVERTE RÉSEAU =====

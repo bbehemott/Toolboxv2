@@ -14,10 +14,9 @@ redis==4.6.0
 flower==2.0.1
 
 # ===== LOGGING ET MONITORING =====
-pygelf==0.2.0
+ pygelf==0.2.0
 
 # ===== OUTILS DE SÉCURITÉ ET PARSING =====
-python-gvm==22.9.0
 lxml==4.9.3
 requests==2.31.0
 

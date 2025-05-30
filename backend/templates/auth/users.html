@@ -18,57 +18,88 @@
     <tr>
       <th>Nom d'utilisateur</th>
       <th>Rôle</th>
-      <th>Changer le mot de passe</th>
+      <th>Créé le</th>
+      <th>Dernière connexion</th>
+      <th>Statut</th>
       <th>Actions</th>
     </tr>
   </thead>
   <tbody>
-    {% for user, role in users %}
+    {% for user in users %}
       <tr>
-        <td>{{ user }}</td>
-        
-        <!-- Rôle -->
+        <td><strong>{{ user.username }}</strong></td>
         <td>
-          {% if user != session.get('user') and user != 'admin' %}
-            <form method="post" action="{{ url_for('update_role', username=user) }}" class="d-flex align-items-center">
-              <select class="form-select form-select-sm me-2" name="role">
-                <option value="admin" {% if role == 'admin' %}selected{% endif %}>admin</option>
-                <option value="pentester" {% if role == 'pentester' %}selected{% endif %}>pentester</option>
-                <option value="viewer" {% if role == 'viewer' %}selected{% endif %}>viewer</option>
-              </select>
-              <button class="btn btn-sm btn-primary">Mettre à jour</button>
-            </form>
+          <span class="badge bg-{{ 'danger' if user.role == 'admin' else 'warning' if user.role == 'pentester' else 'secondary' }}">
+            {{ user.role }}
+          </span>
+        </td>
+        <td>
+          <small class="text-muted">{{ user.created_at or 'N/A' }}</small>
+        </td>
+        <td>
+          <small class="text-muted">{{ user.last_login or 'Jamais' }}</small>
+        </td>
+        <td>
+          {% if user.active %}
+            <span class="badge bg-success">Actif</span>
           {% else %}
-            {{ role }} {% if user == session.get('user') %}<span class="text-muted">(vous)</span>{% endif %}
+            <span class="badge bg-secondary">Inactif</span>
           {% endif %}
         </td>
-
-        <!-- Changement de mot de passe -->
         <td>
-          {% if user != 'admin' %}
-            <form method="post" action="{{ url_for('update_password', username=user) }}" class="d-flex align-items-center">
-              <input type="password" class="form-control form-control-sm me-2" name="new_password" placeholder="Nouveau mot de passe" required minlength="6">
-              <button class="btn btn-sm btn-warning">Modifier</button>
-            </form>
+          {% if user.username != current_user.username and user.username != 'admin' %}
+            <div class="btn-group btn-group-sm" role="group">
+              <button class="btn btn-outline-warning" 
+                      onclick="toggleUserStatus('{{ user.username }}', {{ user.active }})"
+                      title="{{ 'Désactiver' if user.active else 'Activer' }} l'utilisateur">
+                {{ '🔒' if user.active else '🔓' }}
+              </button>
+              <button class="btn btn-outline-danger" 
+                      onclick="deleteUser('{{ user.username }}')"
+                      title="Supprimer l'utilisateur">
+                🗑️
+              </button>
+            </div>
           {% else %}
-            <span class="text-muted">Compte protégé</span>
+            <span class="text-muted">
+              {% if user.username == current_user.username %}
+                (Vous)
+              {% else %}
+                (Protégé)
+              {% endif %}
+            </span>
           {% endif %}
         </td>
-
-        <!-- Suppression -->
-        <td>
-          {% if user != session.get('user') and user != 'admin' %}
-            <form method="post" action="{{ url_for('delete_user', username=user) }}" onsubmit="return confirm('Supprimer {{ user }} ?');">
-              <button class="btn btn-sm btn-danger">🗑 Supprimer</button>
-            </form>
-          {% else %}
-            <span class="text-muted">Indisponible</span>
-          {% endif %}
-        </td>
-
       </tr>
     {% endfor %}
   </tbody>
 </table>
+
+<div class="mt-3">
+  <a href="{{ url_for('main.create_user') }}" class="btn btn-success">
+    👤 Créer un nouvel utilisateur
+  </a>
+</div>
+
+<script>
+function toggleUserStatus(username, isActive) {
+    const action = isActive ? 'désactiver' : 'activer';
+    if (!confirm(`Voulez-vous vraiment ${action} l'utilisateur ${username} ?`)) {
+        return;
+    }
+    
+    // TODO: Implémenter l'API de toggle du statut utilisateur
+    alert('⚠️ Fonctionnalité pas encore implémentée - sera ajoutée prochainement');
+}
+
+function deleteUser(username) {
+    if (!confirm(`⚠️ ATTENTION: Voulez-vous vraiment supprimer l'utilisateur ${username} ?\n\nCette action est irréversible.`)) {
+        return;
+    }
+    
+    // TODO: Implémenter l'API de suppression d'utilisateur
+    alert('⚠️ Fonctionnalité pas encore implémentée - sera ajoutée prochainement');
+}
+</script>
 
 {% endblock %}
