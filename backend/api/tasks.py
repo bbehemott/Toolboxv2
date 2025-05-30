@@ -241,6 +241,84 @@ def api_cleanup_tasks():
             'error': str(e)
         }, 500
 
+
+
+@tasks_bp.route('/api/real-stats')
+@login_required
+def api_real_stats():
+    """API pour les vraies statistiques en temps réel"""
+    try:
+        task_manager = TaskManager(current_app.db)
+        
+        # Statistiques Celery + Base de données
+        celery_stats = task_manager.get_statistics()
+        
+        # Statistiques base de données
+        db_stats = current_app.db.get_stats()
+        
+        return {
+            'success': True,
+            'stats': {
+                'active': celery_stats['celery']['active'],
+                'scheduled': celery_stats['celery']['scheduled'], 
+                'completed': db_stats.get('tasks', {}).get('completed', 0),
+                'failed': db_stats.get('tasks', {}).get('failed', 0),
+                'workers': celery_stats['celery']['workers']
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur stats temps réel: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'stats': {
+                'active': 0,
+                'scheduled': 0,
+                'completed': 0,
+                'failed': 0,
+                'workers': 0
+            }
+        }, 500
+
+@tasks_bp.route('/api/task/<task_id>/hide-from-history', methods=['POST'])
+@login_required
+def api_hide_task_from_history(task_id):
+    """API pour masquer une tâche de l'historique (utilisée par le JavaScript)"""
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+        
+        # Vérifier les droits d'accès
+        task_manager = TaskManager(current_app.db)
+        if not task_manager.can_user_access_task(task_id, user_id, user_role):
+            return {
+                'success': False,
+                'error': 'Accès refusé'
+            }, 403
+        
+        # Masquer la tâche
+        success = current_app.db.hide_task(task_id)
+        
+        if success:
+            return {
+                'success': True,
+                'message': 'Tâche masquée de l\'historique'
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Tâche non trouvée'
+            }, 404
+            
+    except Exception as e:
+        logger.error(f"Erreur masquage tâche {task_id}: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
 # ===== TESTING =====
 
 @tasks_bp.route('/test')

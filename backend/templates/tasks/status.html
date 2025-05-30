@@ -156,7 +156,7 @@ function stopAutoRefresh() {
 }
 
 function refreshStatus() {
-    fetch(`/api/task/${taskId}/status`)
+    fetch(`/tasks/api/${taskId}/status`)
         .then(response => response.json())
         .then(data => {
             updateUI(data);
@@ -173,9 +173,8 @@ function refreshStatus() {
 }
 
 function updateUI(data) {
-    const state = data.state;
-    const progress = data.progress || 0;
-    const status = data.status || 'État inconnu';
+    const state = data.unified_state || data.state || 'PENDING';
+    const progress = data.unified_progress || data.progress || 0;
     
     // Mettre à jour le titre
     document.getElementById('task-title').textContent = `📊 Tâche ${state}`;
@@ -203,6 +202,7 @@ function updateUI(data) {
     }
     
     // Mettre à jour le statut
+    const status = data.unified_status || data.status || 'État inconnu';
     document.getElementById('status-text').textContent = status;
     
     // Mettre à jour le badge d'état
@@ -244,9 +244,9 @@ function updateUI(data) {
     }
     
     // Ajouter au log les changements de statut
-    if (status && status !== 'État inconnu') {
-        addLogEntry(`ℹ️ ${status}`, 'info');
-    }
+    if (data.unified_status && data.unified_status !== 'État inconnu') {
+        addLogEntry(`ℹ️ ${data.unified_status}`, 'info');
+    }    
     
     // ✅ AFFICHER LES RÉSULTATS INTELLIGEMMENT
     if (state === 'SUCCESS' && data.result) {
@@ -474,7 +474,7 @@ function showError(error) {
 
 function cancelTask() {
     if (confirm('⚠️ Êtes-vous sûr de vouloir annuler cette tâche ?')) {
-        fetch(`/api/task/${taskId}/cancel`, {
+        fetch(`/tasks/api/${taskId}/cancel`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

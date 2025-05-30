@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Dashboard chargé - Initialisation...');
     
     // Test de connectivité
-    fetch('/api/tasks/real-stats')
+    fetch('/tasks/api/real-stats')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -201,7 +201,7 @@ function hideTaskFromHistory(taskId) {
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     button.disabled = true;
     
-    fetch(`/api/task/${taskId}/hide-from-history`, {
+    fetch(`/tasks/api/task/${taskId}/hide-from-history`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -261,7 +261,7 @@ function purgeTaskHistory() {
         purgeButton.disabled = true;
     }
     
-    fetch('/api/tasks/purge-history', {
+    fetch('/tasks/api/cleanup', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -344,7 +344,7 @@ function updateTaskCounts() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Dashboard chargé - Test connectivité...');
     
-    fetch('/api/tasks/real-stats')
+    fetch('/tasks/api/real-stats')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
