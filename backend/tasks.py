@@ -704,6 +704,7 @@ def full_network_audit(self, target: str, options: Dict = None):
         raise Exception("Impossible d'accéder à la base de données")
     
     try:
+        start_time = time.time()
         logger.info(f"🎯 [Celery] Audit réseau complet démarré sur: {target}")
         
         # Mise à jour du statut initial
@@ -816,7 +817,7 @@ def full_network_audit(self, target: str, options: Dict = None):
                 'hosts_with_ports': hosts_with_ports,
                 'total_ports': total_ports,
                 'total_services': total_services,
-                'scan_duration': (datetime.now() - datetime.fromtimestamp(startTime)).total_seconds() if 'startTime' in locals() else 0
+                'scan_duration': time.time() - start_time
             }
         }
         
