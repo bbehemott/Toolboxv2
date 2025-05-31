@@ -814,6 +814,7 @@ def full_network_audit(self, target: str, options: Dict = None):
             # Compiler les résultats
             successful_scans = len([r for r in port_results if r.get('success')])
             total_open_ports = sum(len(r.get('open_ports', [])) for r in port_results)
+            total_services = sum(len(r.get('services', [])) for r in port_results)
             hosts_with_ports = len([r for r in port_results if r.get('open_ports')])
     
             port_scan_result = {

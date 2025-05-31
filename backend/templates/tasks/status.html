@@ -711,7 +711,16 @@ function showResults(result) {
     const resultsDiv = document.getElementById('task-results');
     const contentDiv = document.getElementById('results-content');
     
-    // Formatter les résultats selon le type
+    // Détecter le type de résultat
+    if (isAuditResult(result)) {
+        showAuditResults(result);
+        return;
+    } else if (isDiscoveryTask(result)) {
+        showDiscoveryResults(result);
+        return;
+    }
+    
+    // Affichage par défaut (JSON)
     let resultHtml = `
         <h6>📊 Résultats détaillés :</h6>
         <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;">${JSON.stringify(result, null, 2)}</pre>
@@ -719,6 +728,182 @@ function showResults(result) {
     
     contentDiv.innerHTML = resultHtml;
     resultsDiv.style.display = 'block';
+}
+
+function isAuditResult(result) {
+    return result && 
+           (result.phases_completed || 
+            result.audit_complete || 
+            (result.discovery_results && result.port_scan_results));
+}
+
+function showAuditResults(result) {
+    const resultsDiv = document.getElementById('task-results');
+    const contentDiv = document.getElementById('results-content');
+    
+    let html = `
+        <div class="alert alert-success">
+            <h6>✅ Audit complet terminé !</h6>
+            <p><strong>🎯 Cible :</strong> ${result.target}</p>
+            <p><strong>📋 Phases :</strong> ${result.phases_completed ? result.phases_completed.join(' → ') : 'Toutes'}</p>
+        </div>
+    `;
+    
+    // Résumé avec cartes
+    if (result.summary) {
+        html += `
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card text-center border-primary">
+                        <div class="card-body">
+                            <h5 class="card-title text-primary">${result.summary.total_hosts || 0}</h5>
+                            <p class="card-text">🌐 Hôtes trouvés</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center border-success">
+                        <div class="card-body">
+                            <h5 class="card-title text-success">${result.summary.hosts_with_ports || 0}</h5>
+                            <p class="card-text">🔓 Avec ports ouverts</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center border-info">
+                        <div class="card-body">
+                            <h5 class="card-title text-info">${result.summary.total_ports || 0}</h5>
+                            <p class="card-text">🔢 Ports ouverts</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center border-warning">
+                        <div class="card-body">
+                            <h5 class="card-title text-warning">${result.summary.total_services || 0}</h5>
+                            <p class="card-text">🛠️ Services détectés</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Détails de la découverte
+    if (result.discovery_results && result.discovery_results.hosts) {
+        html += `
+            <h6>🌐 Phase 1: Découverte réseau</h6>
+            <div class="table-responsive mb-4">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>IP</th>
+                            <th>Statut</th>
+                            <th>Hostname</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        result.discovery_results.hosts.forEach(host => {
+            html += `
+                <tr>
+                    <td><strong>${host.ip}</strong></td>
+                    <td><span class="badge bg-success">Actif</span></td>
+                    <td><small>${host.hostname || 'N/A'}</small></td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+    
+    // Détails du scan de ports
+    if (result.port_scan_results && result.port_scan_results.results) {
+        html += `
+            <h6>🔍 Phase 2: Scan de ports</h6>
+            <div class="table-responsive mb-4">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>IP</th>
+                            <th>Ports ouverts</th>
+                            <th>Services</th>
+                            <th>OS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        result.port_scan_results.results.forEach(hostResult => {
+            if (hostResult.success) {
+                html += `
+                    <tr>
+                        <td><strong>${hostResult.host}</strong></td>
+                        <td>
+                            ${hostResult.open_ports && hostResult.open_ports.length > 0 ? 
+                                hostResult.open_ports.map(p => `<span class="badge bg-info me-1">${p.port}</span>`).join('') : 
+                                '<span class="text-muted">Aucun</span>'
+                            }
+                        </td>
+                        <td>
+                            ${hostResult.services && hostResult.services.length > 0 ? 
+                                `<small>${hostResult.services.length} service(s)</small>` : 
+                                '<span class="text-muted">N/A</span>'
+                            }
+                        </td>
+                        <td>
+                            ${hostResult.os ? 
+                                `<small>${hostResult.os.name}</small>` : 
+                                '<span class="text-muted">Non détecté</span>'
+                            }
+                        </td>
+                    </tr>
+                `;
+            }
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+    
+    // Boutons d'action
+    html += `
+        <div class="mt-4">
+            <button class="btn btn-outline-info" onclick="copyResultsToClipboard()">
+                📋 Copier dans le presse-papier
+            </button>
+            <button class="btn btn-outline-secondary" onclick="toggleRawJson()">
+                🔧 Voir JSON brut
+            </button>
+        </div>
+        
+        <div id="raw-json" style="display: none;" class="mt-3">
+            <h6>📋 Données brutes :</h6>
+            <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;">${JSON.stringify(result, null, 2)}</pre>
+        </div>
+    `;
+    
+    contentDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+}
+
+function toggleRawJson() {
+    const rawJsonDiv = document.getElementById('raw-json');
+    if (rawJsonDiv.style.display === 'none') {
+        rawJsonDiv.style.display = 'block';
+        event.target.textContent = '🔧 Masquer JSON brut';
+    } else {
+        rawJsonDiv.style.display = 'none';
+        event.target.textContent = '🔧 Voir JSON brut';
+    }
 }
 
 function showError(error) {
