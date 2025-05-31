@@ -72,8 +72,19 @@ def api_task_status(task_id):
             return {
                 'success': False,
                 'error': 'Tâche non trouvée',
-                'state': 'NOT_FOUND'
+                'state': 'NOT_FOUND',
+                'task_id': task_id
             }, 404
+        
+        # CORRECTION: Vérifier si status est un dict avant d'utiliser .get()
+        if not isinstance(status, dict):
+            logger.error(f"❌ Status n'est pas un dict: {type(status)}")
+            return {
+                'success': False,
+                'error': 'Format de statut invalide',
+                'state': 'ERROR',
+                'task_id': task_id
+            }, 500
         
         response = {
             'success': True,
@@ -85,7 +96,7 @@ def api_task_status(task_id):
             # Informations détaillées
             'meta': {
                 'target': status.get('target'),
-                'phase': status.get('celery_info', {}).get('phase', 'N/A'),
+                'phase': status.get('celery_info', {}).get('phase', 'N/A') if isinstance(status.get('celery_info'), dict) else 'N/A',
                 'task_name': status.get('task_name'),
                 'task_type': status.get('task_type')
             },
@@ -102,12 +113,14 @@ def api_task_status(task_id):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur API statut tâche {task_id}: {e}")
+        logger.error(f"❌ Erreur API statut tâche {task_id}: {e}")
         return {
             'success': False,
             'error': str(e),
-            'state': 'ERROR'
+            'state': 'ERROR',
+            'task_id': task_id
         }, 500
+
 
 
 @tasks_bp.route('/api/<task_id>/results')

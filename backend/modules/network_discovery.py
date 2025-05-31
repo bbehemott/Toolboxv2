@@ -46,7 +46,7 @@ class NetworkDiscoveryTool:
             return False, f"Erreur validation: {str(e)}"
     
     def host_discovery_nmap(self, target: str, options: Dict = None) -> Dict:
-        """Découverte d'hôtes avec Nmap (ping sweep)"""
+        """Découverte d'hôtes avec Nmap (ping sweep) - VERSION CORRIGÉE"""
         try:
             output_file = os.path.join(self.temp_dir, f"discovery_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml")
             
@@ -58,6 +58,11 @@ class NetworkDiscoveryTool:
                 "-oX", output_file,  # Sortie XML
                 target
             ]
+            
+            # AMÉLIORATION: Pour les tests locaux, ajouter aussi un scan de ports léger
+            if options and options.get('include_top_ports', False):
+                cmd.remove("-sn")  # Retirer le ping-only
+                cmd.extend(["-sS", "--top-ports", "100"])  # Ajouter scan des top 100 ports
             
             # Options supplémentaires
             if options:

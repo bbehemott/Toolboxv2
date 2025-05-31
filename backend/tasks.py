@@ -9,13 +9,30 @@ logger = logging.getLogger(__name__)
 
 # ===== ACCÈS À LA BASE DE DONNÉES =====
 def get_db_manager():
-    """Accès simplifié au gestionnaire de base de données"""
+    """Accès simplifié au gestionnaire de base de données - VERSION CORRIGÉE"""
     try:
+        import sys
+        import os
+        
+        # CORRECTION: Ajouter le répertoire courant au PATH
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        if current_dir not in sys.path:
+            sys.path.insert(0, current_dir)
+        
         from database import DatabaseManager
         from config import config
         
         config_obj = config.get('development', config['default'])
-        return DatabaseManager(config_obj.DATABASE_PATH)
+        db_manager = DatabaseManager(config_obj.DATABASE_PATH)
+        
+        logger.info(f"✅ Connexion BDD réussie dans Celery: {config_obj.DATABASE_PATH}")
+        return db_manager
+        
+    except ImportError as e:
+        logger.error(f"❌ Erreur import dans Celery: {e}")
+        logger.error(f"❌ Python path: {sys.path}")
+        logger.error(f"❌ Current dir: {os.getcwd()}")
+        return None
     except Exception as e:
         logger.error(f"❌ Erreur accès BDD dans Celery: {e}")
         return None
