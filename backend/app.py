@@ -3,7 +3,7 @@ import logging
 from flask import Flask
 from logging.handlers import RotatingFileHandler
 from pygelf import GelfUdpHandler
-
+from api.pentest import pentest_bp
 from config import config
 from database import DatabaseManager
 from auth import AuthManager
@@ -11,6 +11,7 @@ from auth import AuthManager
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('toolbox')
+app.register_blueprint(pentest_bp, url_prefix='/pentest')
 
 def create_app(config_name=None):
     """Factory pattern pour créer l'application Flask"""

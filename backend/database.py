@@ -1,6 +1,7 @@
 import sqlite3
 import bcrypt
 import logging
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -251,6 +252,218 @@ class DatabaseManager:
             row = cursor.fetchone()
             return dict(row) if row else None
     
+    # ===== MÉTHODES MODULES PENTEST =====
+    
+    def save_module_result(self, task_id: str, module_name: str, result_data: dict):
+        """Sauvegarde les résultats détaillés d'un module"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO module_results (task_id, module_name, target, result_data)
+                    VALUES (?, ?, ?, ?)
+                ''', (
+                    task_id,
+                    module_name,
+                    result_data.get('target', ''),
+                    json.dumps(result_data)
+                ))
+                conn.commit()
+                logger.info(f"✅ Résultats sauvegardés: {module_name} pour tâche {task_id}")
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"❌ Erreur sauvegarde résultats {module_name}: {e}")
+            return None
+
+    def get_module_results(self, task_id: str, module_name: str = None) -> List[Dict]:
+        """Récupère les résultats d'un ou plusieurs modules pour une tâche"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                if module_name:
+                    cursor.execute('''
+                        SELECT * FROM module_results 
+                        WHERE task_id = ? AND module_name = ?
+                        ORDER BY created_at DESC
+                    ''', (task_id, module_name))
+                else:
+                    cursor.execute('''
+                        SELECT * FROM module_results 
+                        WHERE task_id = ?
+                        ORDER BY created_at DESC
+                    ''', (task_id,))
+                
+                results = []
+                for row in cursor.fetchall():
+                    result = dict(row)
+                    # Désérialiser le JSON
+                    try:
+                        result['result_data'] = json.loads(result['result_data'])
+                    except json.JSONDecodeError:
+                        result['result_data'] = {}
+                    results.append(result)
+                
+                return results
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération résultats {task_id}: {e}")
+            return []
+
+    def get_audit_summary(self, task_id: str) -> Dict:
+        """Génère un résumé complet d'un audit de pentest"""
+        try:
+            # Récupérer les informations de base de la tâche
+            task = self.get_task_by_id(task_id)
+            if not task:
+                return {}
+            
+            # Récupérer tous les résultats de modules
+            module_results = self.get_module_results(task_id)
+            
+            # Compiler le résumé
+            summary = {
+                'task_id': task_id,
+                'task_name': task['task_name'],
+                'target': task['target'],
+                'started_at': task['started_at'],
+                'completed_at': task['completed_at'],
+                'status': task['status'],
+                'modules_executed': [],
+                'total_hosts_found': 0,
+                'total_ports_found': 0,
+                'total_services_found': 0,
+                'vulnerabilities_found': 0,
+                'credentials_found': 0
+            }
+            
+            # Analyser chaque module
+            for module_result in module_results:
+                module_name = module_result['module_name']
+                result_data = module_result['result_data']
+                
+                module_summary = {
+                    'module': module_name,
+                    'success': result_data.get('success', False),
+                    'timestamp': module_result['created_at']
+                }
+                
+                # Découverte réseau
+                if module_name == 'network_discovery':
+                    hosts_found = result_data.get('hosts_found', 0)
+                    summary['total_hosts_found'] = hosts_found
+                    module_summary['hosts_discovered'] = hosts_found
+                
+                # Scan de ports
+                elif module_name == 'port_scan':
+                    total_ports = result_data.get('total_open_ports', 0)
+                    hosts_with_ports = result_data.get('hosts_with_open_ports', 0)
+                    summary['total_ports_found'] = total_ports
+                    module_summary['ports_found'] = total_ports
+                    module_summary['hosts_with_ports'] = hosts_with_ports
+                
+                # Énumération de services
+                elif module_name == 'service_enumeration':
+                    services = result_data.get('total_services', 0)
+                    summary['total_services_found'] = services
+                    module_summary['services_identified'] = services
+                
+                # Scan de vulnérabilités
+                elif module_name == 'vulnerability_scan':
+                    vulns = result_data.get('vulnerabilities_found', 0)
+                    summary['vulnerabilities_found'] += vulns
+                    module_summary['vulnerabilities'] = vulns
+                
+                # Exploitation
+                elif module_name == 'exploitation':
+                    creds = len(result_data.get('credentials_found', []))
+                    summary['credentials_found'] += creds
+                    module_summary['credentials_obtained'] = creds
+                
+                summary['modules_executed'].append(module_summary)
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur génération résumé audit {task_id}: {e}")
+            return {}
+
+    def get_pentest_statistics(self) -> Dict:
+        """Récupère des statistiques globales sur les pentests"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                stats = {}
+                
+                # Statistiques par module
+                cursor.execute('''
+                    SELECT module_name, COUNT(*) as count
+                    FROM module_results
+                    GROUP BY module_name
+                ''')
+                
+                module_stats = {row['module_name']: row['count'] for row in cursor.fetchall()}
+                stats['modules_usage'] = module_stats
+                
+                # Statistiques temporelles (derniers 30 jours)
+                cursor.execute('''
+                    SELECT DATE(created_at) as date, COUNT(*) as scans
+                    FROM module_results
+                    WHERE created_at >= datetime('now', '-30 days')
+                    GROUP BY DATE(created_at)
+                    ORDER BY date DESC
+                ''')
+                
+                daily_stats = {row['date']: row['scans'] for row in cursor.fetchall()}
+                stats['daily_activity'] = daily_stats
+                
+                # Top des cibles scannées
+                cursor.execute('''
+                    SELECT target, COUNT(*) as scan_count
+                    FROM module_results
+                    WHERE target IS NOT NULL AND target != ''
+                    GROUP BY target
+                    ORDER BY scan_count DESC
+                    LIMIT 10
+                ''')
+                
+                top_targets = [(row['target'], row['scan_count']) for row in cursor.fetchall()]
+                stats['top_targets'] = top_targets
+                
+                return stats
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur statistiques pentest: {e}")
+            return {}
+
+    def export_audit_results(self, task_id: str, format: str = 'json') -> Dict:
+        """Exporte tous les résultats d'un audit dans un format donné"""
+        try:
+            # Récupérer le résumé complet
+            summary = self.get_audit_summary(task_id)
+            
+            # Récupérer tous les résultats détaillés
+            module_results = self.get_module_results(task_id)
+            
+            export_data = {
+                'audit_summary': summary,
+                'detailed_results': module_results,
+                'export_timestamp': datetime.now().isoformat(),
+                'export_format': format
+            }
+            
+            if format == 'json':
+                return export_data
+            elif format == 'xml':
+                # Conversion XML (à implémenter si nécessaire)
+                return {'error': 'Format XML non encore implémenté'}
+            else:
+                return {'error': f'Format {format} non supporté'}
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur export audit {task_id}: {e}")
+            return {'error': str(e)}
+    
     # ===== MÉTHODES UTILITAIRES =====
     
     def get_stats(self) -> Dict:
@@ -300,3 +513,18 @@ class DatabaseManager:
             ''')
             conn.commit()
             return cursor.rowcount
+
+    def cleanup_module_results(self, days: int = 30) -> int:
+        """Nettoie les anciens résultats de modules"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    DELETE FROM module_results
+                    WHERE created_at < datetime('now', '-{} days')
+                '''.format(days))
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            logger.error(f"❌ Erreur nettoyage résultats modules: {e}")
+            return 0
