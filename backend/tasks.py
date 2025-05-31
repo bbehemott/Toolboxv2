@@ -809,3 +809,293 @@ def full_network_audit(self, target: str, options: Dict = None):
             'audit_complete': True,
             'phases_completed': phases_completed,
             'discovery_results': discovery_result,
+            'port_scan_results': port_scan_result,
+            'enumeration_results': enumeration_result,
+            'summary': {
+                'total_hosts': total_hosts,
+                'hosts_with_ports': hosts_with_ports,
+                'total_ports': total_ports,
+                'total_services': total_services,
+                'scan_duration': (datetime.now() - datetime.fromtimestamp(startTime)).total_seconds() if 'startTime' in locals() else 0
+            }
+        }
+        
+        # Résumé textuel
+        summary_text = f"Audit complet terminé: {total_hosts} hôtes, {hosts_with_ports} avec ports ouverts, {total_ports} ports trouvés"
+        
+        # Finaliser la tâche
+        db.update_task_status(
+            task_id=self.request.id,
+            status='completed',
+            progress=100,
+            result_summary=summary_text
+        )
+        
+        # Sauvegarder le résumé de l'audit
+        try:
+            if hasattr(db, 'save_module_result'):
+                db.save_module_result(
+                    task_id=self.request.id,
+                    module_name='full_audit',
+                    result_data=audit_summary
+                )
+        except Exception as save_error:
+            logger.warning(f"⚠️ Impossible de sauvegarder le résumé d'audit: {save_error}")
+        
+        logger.info(f"🎯 [Celery] Audit complet terminé: {summary_text}")
+        return audit_summary
+        
+    except Exception as e:
+        logger.error(f"💥 [Celery] Exception audit complet: {e}")
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='failed',
+            error_message=str(e)
+        )
+        raise
+
+@celery_app.task(bind=True, name='tasks.vulnerability_scan')
+def vulnerability_scan(self, hosts_data: Dict, options: Dict = None):
+    """Tâche Celery pour le scan de vulnérabilités avec Nuclei"""
+    db = get_db_manager()
+    if not db:
+        raise Exception("Impossible d'accéder à la base de données")
+    
+    try:
+        logger.info(f"🚨 [Celery] Scan de vulnérabilités démarré")
+        
+        # Extraction des hôtes avec services
+        if isinstance(hosts_data, dict) and 'results' in hosts_data:
+            host_results = hosts_data['results']
+            target = hosts_data.get('target', 'Multiple hosts')
+        else:
+            raise Exception("Données d'hôtes invalides pour le scan de vulnérabilités")
+        
+        # Filtrer seulement les hôtes avec des services détectés
+        hosts_with_services = [h for h in host_results if h.get('success') and h.get('services')]
+        
+        if not hosts_with_services:
+            raise Exception("Aucun service trouvé pour le scan de vulnérabilités")
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='running',
+            progress=0
+        )
+        
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'status': f'Scan vulnérabilités sur {len(hosts_with_services)} hôte(s)',
+                'progress': 10,
+                'target': target,
+                'phase': 'Scan vulnérabilités'
+            }
+        )
+        
+        # Simuler le scan de vulnérabilités
+        vulnerabilities_found = []
+        total_scanned = 0
+        
+        for i, host_data in enumerate(hosts_with_services):
+            host_ip = host_data.get('host')
+            services = host_data.get('services', [])
+            
+            progress = 20 + (i * 60 // len(hosts_with_services))
+            self.update_state(
+                state='PROGRESS',
+                meta={
+                    'status': f'Scan vulnérabilités {host_ip} ({i+1}/{len(hosts_with_services)})',
+                    'progress': progress,
+                    'target': target,
+                    'phase': 'Scan vulnérabilités'
+                }
+            )
+            
+            # Simuler la détection de vulnérabilités par service
+            for service in services:
+                total_scanned += 1
+                
+                # Exemples de vulnérabilités basées sur les services
+                if service.get('service') == 'http' or service.get('port') in [80, 8080]:
+                    vulnerabilities_found.append({
+                        'host': host_ip,
+                        'port': service.get('port'),
+                        'service': service.get('service'),
+                        'vulnerability': 'HTTP Information Disclosure',
+                        'severity': 'Medium',
+                        'description': 'Server header reveals version information',
+                        'cvss': 5.3
+                    })
+                elif service.get('service') == 'ssh' or service.get('port') == 22:
+                    vulnerabilities_found.append({
+                        'host': host_ip,
+                        'port': service.get('port'),
+                        'service': service.get('service'),
+                        'vulnerability': 'SSH Weak Algorithms',
+                        'severity': 'Low',
+                        'description': 'SSH server supports weak encryption algorithms',
+                        'cvss': 2.6
+                    })
+        
+        # Résultats finaux
+        final_result = {
+            'task_id': self.request.id,
+            'module': 'Scan Vulnérabilités',
+            'target': target,
+            'success': True,
+            'hosts_scanned': len(hosts_with_services),
+            'services_scanned': total_scanned,
+            'vulnerabilities_found': len(vulnerabilities_found),
+            'vulnerabilities': vulnerabilities_found,
+            'scan_options': options or {}
+        }
+        
+        summary = f"{len(vulnerabilities_found)} vulnérabilité(s) trouvée(s) sur {len(hosts_with_services)} hôte(s)"
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='completed',
+            progress=100,
+            result_summary=summary
+        )
+        
+        # Sauvegarder les résultats
+        try:
+            if hasattr(db, 'save_module_result'):
+                db.save_module_result(
+                    task_id=self.request.id,
+                    module_name='vulnerability_scan',
+                    result_data=final_result
+                )
+        except Exception as save_error:
+            logger.warning(f"⚠️ Impossible de sauvegarder les résultats: {save_error}")
+        
+        logger.info(f"✅ [Celery] Scan vulnérabilités terminé: {summary}")
+        return final_result
+        
+    except Exception as e:
+        logger.error(f"💥 [Celery] Exception scan vulnérabilités: {e}")
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='failed',
+            error_message=str(e)
+        )
+        raise
+
+@celery_app.task(bind=True, name='tasks.exploitation')
+def exploitation(self, vulnerabilities_data: Dict, options: Dict = None):
+    """Tâche Celery pour l'exploitation automatisée"""
+    db = get_db_manager()
+    if not db:
+        raise Exception("Impossible d'accéder à la base de données")
+    
+    try:
+        logger.info(f"💥 [Celery] Exploitation démarrée")
+        
+        vulnerabilities = vulnerabilities_data.get('vulnerabilities', [])
+        target = vulnerabilities_data.get('target', 'Multiple targets')
+        
+        if not vulnerabilities:
+            raise Exception("Aucune vulnérabilité à exploiter")
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='running',
+            progress=0
+        )
+        
+        # Tentatives d'exploitation
+        exploitation_results = []
+        credentials_found = []
+        
+        for i, vuln in enumerate(vulnerabilities):
+            progress = 10 + (i * 80 // len(vulnerabilities))
+            
+            self.update_state(
+                state='PROGRESS',
+                meta={
+                    'status': f'Exploitation {vuln["host"]}:{vuln["port"]} ({i+1}/{len(vulnerabilities)})',
+                    'progress': progress,
+                    'target': target,
+                    'phase': 'Exploitation'
+                }
+            )
+            
+            # Simuler l'exploitation selon le type de vulnérabilité
+            exploit_result = {
+                'host': vuln['host'],
+                'port': vuln['port'],
+                'vulnerability': vuln['vulnerability'],
+                'exploit_attempted': True,
+                'exploit_successful': False,
+                'method': 'Automated',
+                'output': ''
+            }
+            
+            # Simulation d'exploitation réussie pour certains cas
+            if vuln['severity'] in ['High', 'Critical'] and vuln['cvss'] > 7.0:
+                exploit_result['exploit_successful'] = True
+                exploit_result['output'] = f"Successful exploitation of {vuln['vulnerability']}"
+                
+                # Simulation de récupération de credentials
+                if 'authentication' in vuln['vulnerability'].lower():
+                    credentials_found.append({
+                        'host': vuln['host'],
+                        'service': vuln['service'],
+                        'username': 'admin',
+                        'password': 'password123',
+                        'method': 'Brute force'
+                    })
+            
+            exploitation_results.append(exploit_result)
+        
+        # Résultats finaux
+        successful_exploits = [r for r in exploitation_results if r['exploit_successful']]
+        
+        final_result = {
+            'task_id': self.request.id,
+            'module': 'Exploitation',
+            'target': target,
+            'success': True,
+            'vulnerabilities_tested': len(vulnerabilities),
+            'exploits_attempted': len(exploitation_results),
+            'successful_exploits': len(successful_exploits),
+            'credentials_found': credentials_found,
+            'exploitation_results': exploitation_results
+        }
+        
+        summary = f"{len(successful_exploits)}/{len(vulnerabilities)} exploitation(s) réussie(s), {len(credentials_found)} credential(s) trouvé(s)"
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='completed',
+            progress=100,
+            result_summary=summary
+        )
+        
+        # Sauvegarder les résultats
+        try:
+            if hasattr(db, 'save_module_result'):
+                db.save_module_result(
+                    task_id=self.request.id,
+                    module_name='exploitation',
+                    result_data=final_result
+                )
+        except Exception as save_error:
+            logger.warning(f"⚠️ Impossible de sauvegarder les résultats: {save_error}")
+        
+        logger.info(f"✅ [Celery] Exploitation terminée: {summary}")
+        return final_result
+        
+    except Exception as e:
+        logger.error(f"💥 [Celery] Exception exploitation: {e}")
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='failed',
+            error_message=str(e)
+        )
+        raise

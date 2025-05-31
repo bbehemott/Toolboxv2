@@ -54,20 +54,6 @@ RUN git clone --depth 1 https://github.com/sqlmapproject/sqlmap.git /opt/sqlmap 
     && ln -s /opt/sqlmap/sqlmap.py /usr/local/bin/sqlmap \
     && chmod +x /usr/local/bin/sqlmap
 
-# ===== INSTALLATION DE GOBUSTER =====
-RUN wget -q https://github.com/OJ/gobuster/releases/download/v3.6.0/gobuster_Linux_x86_64.tar.gz \
-    && tar -xzf gobuster_Linux_x86_64.tar.gz \
-    && mv gobuster /usr/local/bin/ \
-    && chmod +x /usr/local/bin/gobuster \
-    && rm gobuster_Linux_x86_64.tar.gz
-
-# ===== INSTALLATION DE SUBFINDER =====
-RUN wget -q https://github.com/projectdiscovery/subfinder/releases/download/v2.6.3/subfinder_2.6.3_linux_amd64.zip \
-    && unzip subfinder_2.6.3_linux_amd64.zip \
-    && mv subfinder /usr/local/bin/ \
-    && chmod +x /usr/local/bin/subfinder \
-    && rm subfinder_2.6.3_linux_amd64.zip
-
 # ===== CONFIGURATION DE L'APPLICATION =====
 WORKDIR /app
 
