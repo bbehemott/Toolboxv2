@@ -1,4 +1,3 @@
-# backend/celery_app.py - Configuration Celery nettoyée
 import os
 from celery import Celery
 import logging
@@ -19,7 +18,7 @@ def make_celery():
         'toolbox',
         broker=broker_url,
         backend=result_backend,
-        include=['backend.tasks']  # Module contenant les tâches
+        include=['tasks']  # Module contenant les tâches
     )
     
     # Configuration Celery

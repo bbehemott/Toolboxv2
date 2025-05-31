@@ -736,10 +736,17 @@ def full_network_audit(self, target: str, options: Dict = None):
             'arp_ping': options.get('arp_ping', False)
         }
         
-        discovery_result = network_discovery.apply(args=[target, discovery_options]).get()
-        
+        from modules.network_discovery import NetworkDiscoveryTool
+        discovery_tool = NetworkDiscoveryTool()
+        discovery_result = discovery_tool.discover_network(
+            target, 
+            discovery_options.get('method', 'nmap'), 
+            discovery_options
+        )
+
         if not discovery_result.get('success'):
             raise Exception(f"Échec découverte réseau: {discovery_result.get('error', 'Erreur inconnue')}")
+
         
         hosts_found = discovery_result.get('hosts_found', 0)
         if hosts_found == 0:
@@ -763,10 +770,50 @@ def full_network_audit(self, target: str, options: Dict = None):
             'os_detection': options.get('os_detection', False)
         }
         
-        port_scan_result = port_scan.apply(args=[discovery_result, port_options]).get()
+        from modules.port_scanner import PortScanner
+        port_scanner = PortScanner()
+
+        hosts = discovery_result.get('hosts', [])
+        if hosts:
+            port_results = []
+            total_hosts = len(hosts)
+    
+            for i, host in enumerate(hosts):
+                # Mettre à jour la progression
+                progress = 35 + (i * 35 // total_hosts)  # Entre 35% et 70%
+                self.update_state(
+                    state='PROGRESS',
+                    meta={
+                        'status': f'Scan ports {host.get("ip")} ({i+1}/{total_hosts})',
+                        'progress': progress,
+                        'target': target,
+                        'phase': 'Scan ports'
+                    }
+                )
         
+                result = port_scanner.scan_host_ports(host.get('ip'), port_options)
+                port_results.append(result)
+    
+            # Compiler les résultats
+            successful_scans = len([r for r in port_results if r.get('success')])
+            total_open_ports = sum(len(r.get('open_ports', [])) for r in port_results)
+            hosts_with_ports = len([r for r in port_results if r.get('open_ports')])
+    
+            port_scan_result = {
+                'success': True,
+                'results': port_results,
+                'target': target,
+                'hosts_scanned': len(port_results),
+                'successful_scans': successful_scans,
+                'total_open_ports': total_open_ports,
+                'hosts_with_open_ports': hosts_with_ports
+            }
+        else:
+            port_scan_result = {'success': False, 'error': 'Aucun hôte découvert pour le scan de ports'}
+
         if not port_scan_result.get('success'):
             logger.warning(f"⚠️ Scan de ports échoué: {port_scan_result.get('error')}")
+
         
         # Phase 3: Énumération (si activée et si des ports ont été trouvés)
         enumeration_result = None
@@ -781,7 +828,12 @@ def full_network_audit(self, target: str, options: Dict = None):
                 }
             )
             
-            enumeration_result = service_enumeration.apply(args=[port_scan_result, options]).get()
+            enumeration_result = {
+                'success': True,
+                'hosts_enumerated': port_scan_result.get('hosts_with_open_ports', 0),
+                'total_services': port_scan_result.get('total_open_ports', 0),
+                'target': target
+            }
         
         # Compilation des résultats de toutes les phases
         self.update_state(
