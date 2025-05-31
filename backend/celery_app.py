@@ -19,7 +19,7 @@ def make_celery():
         'toolbox',
         broker=broker_url,
         backend=result_backend,
-        include=['tasks']  # Module contenant les tâches
+        include=['backend.tasks']  # Module contenant les tâches
     )
     
     # Configuration Celery

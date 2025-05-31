@@ -1,9 +1,8 @@
-# backend/tasks.py - Fichier complet avec tous les modules pentest
-
 from celery_app import celery_app
 from celery import current_task
 import logging
 import time
+from datetime import datetime
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -171,6 +170,7 @@ def network_discovery(self, target: str, options: Dict = None):
         raise Exception("Impossible d'accéder à la base de données")
     
     try:
+        start_time = time.time()
         logger.info(f"🌐 [Celery] Découverte réseau démarrée: {target}")
         
         # Mise à jour du statut initial
