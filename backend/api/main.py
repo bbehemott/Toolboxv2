@@ -43,14 +43,14 @@ def logout():
     flash('Déconnexion réussie', 'info')
     return redirect(url_for('main.login'))
 
-# ===== DASHBOARD ET PAGES PRINCIPALES =====
+# ===== DASHBOARD =====
 
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
-    """Dashboard principal"""
+    """Dashboard principal - Version vierge"""
     try:
-        # Récupérer les statistiques
+        # Récupérer les statistiques de base
         stats = current_app.db.get_stats()
         
         # Récupérer les tâches récentes de l'utilisateur
@@ -73,8 +73,6 @@ def dashboard():
         return render_template('dashboard/dashboard.html', 
                              stats={}, 
                              recent_tasks=[])
-
-
 
 @main_bp.route('/profile')
 @login_required
@@ -126,14 +124,6 @@ def create_user():
     
     return render_template('auth/create_user.html')
 
-@main_bp.route('/users/<int:user_id>/toggle', methods=['POST'])
-@admin_required
-def toggle_user_status(user_id):
-    """Activer/désactiver un utilisateur"""
-    # Cette fonctionnalité sera implémentée dans la base de données
-    flash('Fonctionnalité pas encore implémentée', 'warning')
-    return redirect(url_for('main.users_list'))
-
 # ===== PAGES D'INFORMATION =====
 
 @main_bp.route('/about')
@@ -155,6 +145,7 @@ def api_status():
     return {
         'status': 'ok',
         'version': '2.0',
+        'mode': 'clean_infrastructure',
         'authenticated': current_app.auth.is_authenticated(),
         'user': current_app.auth.get_current_user() if current_app.auth.is_authenticated() else None
     }
@@ -162,7 +153,7 @@ def api_status():
 @main_bp.route('/api/stats')
 @login_required
 def api_stats():
-    """Statiques générales"""
+    """Statistiques générales"""
     try:
         stats = current_app.db.get_stats()
         return {'success': True, 'stats': stats}

@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger('toolbox.task_manager')
 
 class TaskManager:
-    """Gestionnaire unifié pour toutes les tâches Celery"""
+    """Gestionnaire unifié pour toutes les tâches Celery - Version vierge"""
     
     def __init__(self, db_manager):
         self.db = db_manager
@@ -22,35 +22,6 @@ class TaskManager:
         return self._celery_app
     
     # ===== LANCEMENT DE TÂCHES =====
-    
-    def start_discovery_task(self, target: str, user_id: int, options: Dict = None) -> Optional[str]:
-        """Lance une tâche de découverte réseau"""
-        try:
-            # Générer un ID unique
-            task_id = str(uuid.uuid4())
-            
-            # Enregistrer en base
-            db_task_id = self.db.create_task(
-                task_id=task_id,
-                task_name=f'Découverte → {target}',
-                task_type='discovery',
-                target=target,
-                user_id=user_id
-            )
-            
-            # Lancer la tâche Celery
-            from tasks import discover_network
-            celery_task = discover_network.apply_async(
-                args=[target, options or {}],
-                task_id=task_id
-            )
-            
-            logger.info(f"Tâche découverte lancée: {task_id} pour {target}")
-            return task_id
-            
-        except Exception as e:
-            logger.error(f"Erreur lancement tâche découverte: {e}")
-            return None
     
     def start_test_task(self, duration: int = 10, user_id: int = None) -> Optional[str]:
         """Lance une tâche de test"""
@@ -78,6 +49,34 @@ class TaskManager:
             
         except Exception as e:
             logger.error(f"Erreur lancement tâche test: {e}")
+            return None
+    
+    def start_example_task(self, target: str, user_id: int = None, options: Dict = None) -> Optional[str]:
+        """Lance une tâche exemple - Template pour futurs modules"""
+        try:
+            task_id = str(uuid.uuid4())
+            
+            # Enregistrer en base
+            self.db.create_task(
+                task_id=task_id,
+                task_name=f'Exemple → {target}',
+                task_type='example',
+                target=target,
+                user_id=user_id
+            )
+            
+            # Lancer la tâche Celery
+            from tasks import example_task
+            celery_task = example_task.apply_async(
+                args=[target, options or {}],
+                task_id=task_id
+            )
+            
+            logger.info(f"Tâche exemple lancée: {task_id} pour {target}")
+            return task_id
+            
+        except Exception as e:
+            logger.error(f"Erreur lancement tâche exemple: {e}")
             return None
     
     # ===== GESTION DES TÂCHES =====
@@ -243,64 +242,3 @@ class TaskManager:
                 'database': {},
                 'combined': {'total_active': 0, 'total_completed': 0, 'total_failed': 0}
             }
-    
-    # ===== MAINTENANCE =====
-    
-    def cleanup_orphaned_tasks(self) -> int:
-        """Nettoie les tâches orphelines (présentes en base mais plus dans Celery)"""
-        try:
-            # Récupérer les tâches actives en base
-            active_tasks_db = self.db.get_tasks()
-            active_tasks_db = [t for t in active_tasks_db if t['status'] not in ['completed', 'failed', 'cancelled']]
-            
-            cleaned_count = 0
-            
-            for task in active_tasks_db:
-                task_id = task['task_id']
-                celery_task = self.celery_app.AsyncResult(task_id)
-                
-                # Si la tâche n'existe plus dans Celery, la marquer comme échouée
-                if celery_task.state == 'PENDING' and not self._task_exists_in_celery(task_id):
-                    self.db.update_task_status(
-                        task_id=task_id,
-                        status='failed',
-                        error_message='Tâche orpheline - worker indisponible'
-                    )
-                    cleaned_count += 1
-            
-            if cleaned_count > 0:
-                logger.info(f"Nettoyage: {cleaned_count} tâches orphelines trouvées")
-            
-            return cleaned_count
-            
-        except Exception as e:
-            logger.error(f"Erreur nettoyage tâches orphelines: {e}")
-            return 0
-    
-    def _task_exists_in_celery(self, task_id: str) -> bool:
-        """Vérifie si une tâche existe réellement dans Celery"""
-        try:
-            inspect = self.celery_app.control.inspect()
-            
-            # Vérifier dans les tâches actives
-            active = inspect.active() or {}
-            for worker_tasks in active.values():
-                if any(task.get('id') == task_id for task in worker_tasks):
-                    return True
-            
-            # Vérifier dans les tâches programmées
-            scheduled = inspect.scheduled() or {}
-            for worker_tasks in scheduled.values():
-                if any(task.get('id') == task_id for task in worker_tasks):
-                    return True
-            
-            # Vérifier dans les tâches réservées
-            reserved = inspect.reserved() or {}
-            for worker_tasks in reserved.values():
-                if any(task.get('id') == task_id for task in worker_tasks):
-                    return True
-            
-            return False
-            
-        except Exception:
-            return False

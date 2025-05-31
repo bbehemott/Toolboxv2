@@ -5,11 +5,11 @@
 <div class="row mb-4">
   <div class="col-md-12">
     <h2>🏠 Dashboard Toolbox</h2>
-    <p class="text-muted">Tableau de bord principal - Vue d'ensemble de vos activités</p>
+    <p class="text-muted">Infrastructure prête pour l'intégration de vos outils de cybersécurité</p>
   </div>
 </div>
 
-<!-- Statistiques -->
+<!-- Statistiques de base -->
 <div class="row mb-4">
   <div class="col-md-4">
     <div class="card bg-primary text-white">
@@ -37,31 +37,53 @@
   </div>
 </div>
 
-<!-- Module principal -->
+<!-- Zone d'intégration -->
 <div class="row mb-4">
   <div class="col-md-12">
-    <h4>🔧 Module disponible</h4>
+    <h4>🔧 Modules à intégrer</h4>
   </div>
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-body">
-        <h5 class="card-title">🌐 Découverte Réseau</h5>
-        <p class="card-text">Cartographie et identification des hôtes actifs sur le réseau</p>
-        <a href="{{ url_for('modules.network_discovery') }}" class="btn btn-primary">🚀 Lancer une découverte</a>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-6">
-    <div class="card border-secondary">
-      <div class="card-body text-center">
-        <h5 class="card-title text-muted">🔮 Modules futurs</h5>
-        <p class="card-text text-muted">D'autres modules seront ajoutés prochainement...</p>
-        <ul class="list-unstyled text-start">
-          <li class="text-muted">• 💉 SQLmap (injection SQL)</li>
-          <li class="text-muted">• 💥 Exploitation</li>
-          <li class="text-muted">• ⚡ Post-exploitation</li>
-          <li class="text-muted">• 🔌 Plugins personnalisés</li>
-        </ul>
+  <div class="col-md-12">
+    <div class="card border-dashed">
+      <div class="card-body text-center py-5">
+        <h5 class="card-title text-muted">📦 Espace pour vos modules</h5>
+        <p class="card-text text-muted">Cette zone est prête pour l'ajout de vos modules de cybersécurité</p>
+        <div class="mt-4">
+          <h6 class="text-muted">Infrastructure disponible :</h6>
+          <div class="row mt-3">
+            <div class="col-md-3">
+              <div class="card bg-light">
+                <div class="card-body text-center">
+                  <h6>⚡ Celery</h6>
+                  <small>Tâches asynchrones</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="card bg-light">
+                <div class="card-body text-center">
+                  <h6>🗄️ Redis</h6>
+                  <small>Cache & Broker</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="card bg-light">
+                <div class="card-body text-center">
+                  <h6>📊 Graylog</h6>
+                  <small>Logs centralisés</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="card bg-light">
+                <div class="card-body text-center">
+                  <h6>🔐 Auth</h6>
+                  <small>Système d'authentification</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -72,7 +94,7 @@
   <div class="col-md-12">
     <div class="card">
       <div class="card-header">
-        <h5>📊 Tâches récentes</h5>
+        <h5>📊 Activité système</h5>
       </div>
       <div class="card-body">
         {% if recent_tasks and recent_tasks|length > 0 %}
@@ -80,7 +102,7 @@
             {% for task in recent_tasks %}
             <div class="list-group-item">
               <div class="d-flex w-100 justify-content-between">
-                <h6 class="mb-1">{{ task.task_name or 'Tâche sans nom' }}</h6>
+                <h6 class="mb-1">{{ task.task_name or 'Tâche système' }}</h6>
                 <small>{{ task.started_at or 'Date inconnue' }}</small>
               </div>
               <p class="mb-1">{{ task.target or 'N/A' }}</p>
@@ -92,13 +114,13 @@
           </div>
         {% else %}
           <div class="text-center text-muted py-4">
-            📭 Aucune tâche récente
-            <br><small>Les tâches de découverte apparaîtront ici</small>
+            📭 Aucune activité récente
+            <br><small>Les tâches système apparaîtront ici</small>
           </div>
         {% endif %}
         <div class="mt-3">
-          <a href="{{ url_for('tasks.tasks_dashboard') }}" class="btn btn-outline-primary btn-sm">📊 Voir toutes les tâches</a>
-          <a href="{{ url_for('tasks.test_task_page') }}" class="btn btn-outline-secondary btn-sm">🧪 Test Celery</a>
+          <a href="{{ url_for('tasks.tasks_dashboard') }}" class="btn btn-outline-primary btn-sm">📊 Monitoring complet</a>
+          <a href="{{ url_for('tasks.test_task_page') }}" class="btn btn-outline-secondary btn-sm">🧪 Test système</a>
         </div>
       </div>
     </div>
@@ -109,14 +131,15 @@
 <div class="row mt-4">
   <div class="col-md-12">
     <div class="alert alert-info">
-      <h6>ℹ️ Informations système</h6>
+      <h6>ℹ️ Infrastructure opérationnelle</h6>
       <div class="row">
         <div class="col-md-4">
-          <strong>🔧 Outils intégrés :</strong>
+          <strong>🔧 Composants actifs :</strong>
           <ul class="mb-0">
-            <li>Nmap (découverte & énumération)</li>
-            <li>Celery (tâches asynchrones)</li>
-            <li>Redis (broker de messages)</li>
+            <li>Flask (API & Web UI)</li>
+            <li>Celery (Tâches asynchrones)</li>
+            <li>Redis (Broker de messages)</li>
+            <li>SQLite (Base de données)</li>
           </ul>
         </div>
         <div class="col-md-4">
@@ -137,5 +160,11 @@
     </div>
   </div>
 </div>
+
+<style>
+.border-dashed {
+  border: 2px dashed #dee2e6 !important;
+}
+</style>
 
 {% endblock %}

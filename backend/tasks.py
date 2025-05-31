@@ -1,13 +1,8 @@
 from celery_app import celery_app
 from celery import current_task
-from celery.exceptions import Retry
 import logging
 import time
-import json
 from typing import Dict, Any
-
-# Imports pour nouvelle architecture
-from modules.decouverte_reseau import DecouverteReseauModule
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +10,6 @@ logger = logging.getLogger(__name__)
 def get_db_manager():
     """Accès simplifié au gestionnaire de base de données"""
     try:
-        # Import local pour éviter les dépendances circulaires
         from database import DatabaseManager
         from config import config
         
@@ -24,110 +18,6 @@ def get_db_manager():
     except Exception as e:
         logger.error(f"❌ Erreur accès BDD dans Celery: {e}")
         return None
-
-# ===== TÂCHE DÉCOUVERTE RÉSEAU =====
-@celery_app.task(bind=True, name='tasks.discover_network')
-def discover_network(self, target: str, options: Dict = None):
-    """Tâche asynchrone pour la découverte réseau"""
-    db = get_db_manager()
-    if not db:
-        raise Exception("Impossible d'accéder à la base de données")
-    
-    try:
-        logger.info(f"🌐 [Celery] Début découverte réseau: {target}")
-        
-        # Mise à jour du statut via le nouveau système
-        db.update_task_status(
-            task_id=self.request.id,
-            status='running',
-            progress=0
-        )
-        
-        # Mise à jour du statut Celery
-        self.update_state(
-            state='PROGRESS',
-            meta={'status': 'Initialisation...', 'progress': 10, 'target': target}
-        )
-        
-        # Initialiser le module découverte
-        decouverte_module = DecouverteReseauModule()
-        
-        # Callback pour progression
-        def progress_callback(phase: str, progress: int):
-            # Mettre à jour Celery
-            self.update_state(
-                state='PROGRESS',
-                meta={
-                    'status': f'Phase: {phase}',
-                    'progress': progress,
-                    'target': target,
-                    'phase': phase
-                }
-            )
-            # Mettre à jour la BDD
-            db.update_task_status(
-                task_id=self.request.id,
-                status='running',
-                progress=progress
-            )
-        
-        # Exécuter la découverte complète
-        progress_callback('Découverte réseau', 30)
-        result = decouverte_module.execute_full_discovery(target, options)
-        
-        # Préparer le résultat final
-        final_result = {
-            'task_id': self.request.id,
-            'target': target,
-            'success': result.get('success', False),
-            'completed_at': time.time(),
-            'result_data': result
-        }
-        
-        # Mettre à jour le statut final dans la BDD unifiée
-        if result.get('success'):
-            logger.info(f"✅ [Celery] Découverte terminée: {target}")
-            progress_callback('Terminé avec succès', 100)
-            
-            # Sauvegarder le succès
-            hosts_found = len(result.get('hosts', []))
-            summary = f"Trouvé {hosts_found} hôte(s) actif(s)"
-            
-            db.update_task_status(
-                task_id=self.request.id,
-                status='completed',
-                progress=100,
-                result_summary=summary
-            )
-        else:
-            logger.error(f"❌ [Celery] Erreur découverte: {result.get('error')}")
-            db.update_task_status(
-                task_id=self.request.id,
-                status='failed',
-                error_message=result.get('error', 'Erreur inconnue')
-            )
-            
-        return final_result
-        
-    except Exception as e:
-        logger.error(f"💥 [Celery] Exception découverte {target}: {e}")
-        
-        # Sauvegarder l'erreur
-        db.update_task_status(
-            task_id=self.request.id,
-            status='failed',
-            error_message=str(e)
-        )
-        
-        self.update_state(
-            state='FAILURE',
-            meta={
-                'status': f'Erreur: {str(e)}',
-                'target': target,
-                'error': str(e)
-            }
-        )
-        raise
 
 # ===== TÂCHE TEST =====
 @celery_app.task(bind=True, name='tasks.test_task')
@@ -184,6 +74,83 @@ def test_task(self, duration: int = 10):
         
     except Exception as e:
         logger.error(f"💥 [Celery] Exception test task: {e}")
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='failed',
+            error_message=str(e)
+        )
+        raise
+
+# ===== TEMPLATE POUR FUTURES TÂCHES =====
+@celery_app.task(bind=True, name='tasks.example_task')
+def example_task(self, target: str, options: Dict = None):
+    """Template pour futures tâches de modules"""
+    db = get_db_manager()
+    if not db:
+        raise Exception("Impossible d'accéder à la base de données")
+    
+    try:
+        logger.info(f"🔧 [Celery] Exemple de tâche pour: {target}")
+        
+        # Mise à jour du statut
+        db.update_task_status(
+            task_id=self.request.id,
+            status='running',
+            progress=0
+        )
+        
+        self.update_state(
+            state='PROGRESS',
+            meta={'status': 'Initialisation...', 'progress': 10, 'target': target}
+        )
+        
+        # Simulation de travail
+        for i in range(5):
+            time.sleep(1)
+            progress = 20 + (i * 16)
+            
+            self.update_state(
+                state='PROGRESS',
+                meta={
+                    'status': f'Étape {i+1}/5',
+                    'progress': progress,
+                    'target': target
+                }
+            )
+            
+            db.update_task_status(
+                task_id=self.request.id,
+                status='running',
+                progress=progress
+            )
+        
+        # Résultat final
+        result = {
+            'task_id': self.request.id,
+            'target': target,
+            'success': True,
+            'message': 'Tâche exemple terminée',
+            'completed_at': time.time(),
+            'data': {
+                'example_field': 'example_value',
+                'target': target,
+                'options': options or {}
+            }
+        }
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='completed',
+            progress=100,
+            result_summary=f'Tâche exemple terminée pour {target}'
+        )
+        
+        logger.info(f"✅ [Celery] Tâche exemple terminée")
+        return result
+        
+    except Exception as e:
+        logger.error(f"💥 [Celery] Exception tâche exemple: {e}")
         
         db.update_task_status(
             task_id=self.request.id,
