@@ -806,6 +806,7 @@ def full_network_audit(self, target: str, options: Dict = None):
                 'hosts_scanned': len(port_results),
                 'successful_scans': successful_scans,
                 'total_open_ports': total_open_ports,
+                'total_services': total_services,
                 'hosts_with_open_ports': hosts_with_ports
             }
         else:
