@@ -15,7 +15,6 @@ pygelf==0.2.0
 
 # ===== OUTILS DE PENTEST =====
 python-nmap==0.7.1
-python-masscan==0.1.6
 
 # ===== PARSING ET DONNÉES =====
 lxml==4.9.3

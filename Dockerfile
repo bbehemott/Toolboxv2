@@ -24,7 +24,6 @@ RUN apt-get update && apt-get install -y \
     \
     # Outils de réseau
     nmap \
-    masscan \
     netcat-traditional \
     dnsutils \
     \

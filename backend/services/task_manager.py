@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger('toolbox.task_manager')
 
 class TaskManager:
-    """Gestionnaire unifié pour toutes les tâches Celery - Version avec modules pentest"""
+    """Gestionnaire unifié pour toutes les tâches Celery - Version sans Masscan"""
     
     def __init__(self, db_manager):
         self.db = db_manager
@@ -51,44 +51,15 @@ class TaskManager:
             logger.error(f"Erreur lancement tâche test: {e}")
             return None
     
-    def start_example_task(self, target: str, user_id: int = None, options: Dict = None) -> Optional[str]:
-        """Lance une tâche exemple - Template pour futurs modules"""
-        try:
-            task_id = str(uuid.uuid4())
-            
-            # Enregistrer en base
-            self.db.create_task(
-                task_id=task_id,
-                task_name=f'Exemple → {target}',
-                task_type='example',
-                target=target,
-                user_id=user_id
-            )
-            
-            # Lancer la tâche Celery
-            from tasks import example_task
-            celery_task = example_task.apply_async(
-                args=[target, options or {}],
-                task_id=task_id
-            )
-            
-            logger.info(f"Tâche exemple lancée: {task_id} pour {target}")
-            return task_id
-            
-        except Exception as e:
-            logger.error(f"Erreur lancement tâche exemple: {e}")
-            return None
-    
-    # ===== NOUVELLES TÂCHES PENTEST =====
+    # ===== TÂCHES PENTEST PRINCIPALES =====
     
     def start_discovery_task(self, target: str, options: Dict = None, user_id: int = None) -> Optional[str]:
-        """Lance une tâche de découverte réseau"""
+        """Lance une tâche de découverte réseau (Nmap uniquement)"""
         try:
             task_id = str(uuid.uuid4())
             
             # Déterminer le nom de la tâche
-            method = options.get('method', 'nmap') if options else 'nmap'
-            task_name = f'Découverte {method.title()} → {target}'
+            task_name = f'Découverte Nmap → {target}'
             
             # Enregistrer en base
             self.db.create_task(

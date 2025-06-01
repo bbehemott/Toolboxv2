@@ -211,8 +211,6 @@ def network_discovery(self, target: str, options: Dict = None):
         if not options:
             options = {}
         
-        method = options.get('method', 'nmap')
-        
         # Créer l'instance de l'outil
         from modules.network_discovery import NetworkDiscoveryTool
         discovery_tool = NetworkDiscoveryTool()
@@ -252,7 +250,7 @@ def network_discovery(self, target: str, options: Dict = None):
         )
         
         # Exécution de la découverte
-        discovery_result = discovery_tool.discover_network(target, method, options)
+        discovery_result = discovery_tool.discover_network(target, options)
         
         # Mise à jour du statut durant la découverte
         self.update_state(
