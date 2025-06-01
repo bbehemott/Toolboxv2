@@ -521,3 +521,70 @@ class TaskManager:
                 'database': {},
                 'combined': {'total_active': 0, 'total_completed': 0, 'total_failed': 0}
             }
+
+
+
+    def start_enhanced_port_scan_task(self, target: str, options: Dict = None, escalation_config: Dict = None, user_id: int = None, parent_task_id: str = None) -> Optional[str]:
+        """Lance une tâche de scan de ports amélioré avec escalade"""
+        try:
+            task_id = str(uuid.uuid4())
+            
+            # Nom de la tâche selon la configuration
+            if escalation_config and escalation_config.get('auto_escalate'):
+                task_name = f'Scan Ports Adaptatif → {target}'
+            else:
+                preset = options.get('ports', 'docker_quick') if options else 'docker_quick'
+                task_name = f'Scan Ports ({preset}) → {target}'
+            
+            # Enregistrer en base
+            self.db.create_task(
+                task_id=task_id,
+                task_name=task_name,
+                task_type='enhanced_port_scan',
+                target=target,
+                user_id=user_id
+            )
+            
+            # Lancer la tâche Celery
+            from tasks import enhanced_port_scan
+            celery_task = enhanced_port_scan.apply_async(
+                args=[target, options or {}, escalation_config or {}],
+                task_id=task_id
+            )
+            
+            logger.info(f"🔍 Tâche scan ports amélioré lancée: {task_id} pour {target}")
+            return task_id
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lancement scan ports amélioré: {e}")
+            return None
+
+    def start_adaptive_audit_task(self, target: str, config: Dict = None, user_id: int = None) -> Optional[str]:
+        """Lance une tâche d'audit adaptatif complet"""
+        try:
+            task_id = str(uuid.uuid4())
+            
+            task_name = f'Audit Adaptatif → {target}'
+            
+            # Enregistrer en base
+            self.db.create_task(
+                task_id=task_id,
+                task_name=task_name,
+                task_type='adaptive_audit',
+                target=target,
+                user_id=user_id
+            )
+            
+            # Lancer la tâche Celery
+            from tasks import adaptive_network_audit
+            celery_task = adaptive_network_audit.apply_async(
+                args=[target, config or {}],
+                task_id=task_id
+            )
+            
+            logger.info(f"🧠 Audit adaptatif lancé: {task_id} pour {target}")
+            return task_id
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lancement audit adaptatif: {e}")
+            return None

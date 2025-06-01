@@ -242,7 +242,7 @@ def network_discovery(self, target: str, options: Dict = None):
         self.update_state(
             state='PROGRESS',
             meta={
-                'status': f'Lancement de la découverte ({method})...',
+                'status': f'Lancement de la découverte (Nmap)...',
                 'progress': 20,
                 'target': target,
                 'phase': 'Découverte réseau'
@@ -364,7 +364,7 @@ def network_discovery(self, target: str, options: Dict = None):
             'task_id': self.request.id,
             'module': 'Découverte Réseau',
             'target': target,
-            'method': method,
+            'method': 'nmap',
             'success': True,
             'scan_duration': discovery_result.get('duration_seconds', 0),
             'hosts_found': hosts_found,
@@ -753,11 +753,8 @@ def full_network_audit(self, target: str, options: Dict = None):
         
         from modules.network_discovery import NetworkDiscoveryTool
         discovery_tool = NetworkDiscoveryTool()
-        discovery_result = discovery_tool.discover_network(
-            target, 
-            discovery_options.get('method', 'nmap'), 
-            discovery_options
-        )
+        discovery_result = discovery_tool.discover_network(target, discovery_options)
+
 
         if not discovery_result.get('success'):
             raise Exception(f"Échec découverte réseau: {discovery_result.get('error', 'Erreur inconnue')}")
@@ -1162,6 +1159,433 @@ def exploitation(self, vulnerabilities_data: Dict, options: Dict = None):
         
     except Exception as e:
         logger.error(f"💥 [Celery] Exception exploitation: {e}")
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='failed',
+            error_message=str(e)
+        )
+        raise
+
+
+
+@celery_app.task(bind=True, name='tasks.enhanced_port_scan')
+def enhanced_port_scan(self, target: str, options: Dict = None, escalation_config: Dict = None):
+
+    from modules.port_scanner import PortScanner
+
+    """Tâche Celery pour le scan de ports avec escalade automatique"""
+    db = get_db_manager()
+    if not db:
+        raise Exception("Impossible d'accéder à la base de données")
+    
+    try:
+        start_time = time.time()
+        logger.info(f"🔍 [Celery] Scan ports amélioré démarré: {target}")
+        
+        # Mise à jour du statut initial
+        db.update_task_status(
+            task_id=self.request.id,
+            status='running',
+            progress=0
+        )
+        
+        # Configuration par défaut
+        if not options:
+            options = {}
+        
+        if not escalation_config:
+            escalation_config = {
+                'auto_escalate': True,
+                'max_auto_level': 2,
+                'ask_user_above': True
+            }
+        
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'status': 'Initialisation du scan ports amélioré...',
+                'progress': 5,
+                'target': target,
+                'phase': 'Initialisation',
+                'escalation_enabled': escalation_config.get('auto_escalate', False)
+            }
+        )
+        
+        # Import du scanner amélioré
+        from modules.port_scanner import PortScanner
+        port_scanner = PortScanner()
+        
+        # Métadonnées d'escalade
+        escalation_history = []
+        current_level = 1
+        
+        # Callback pour mettre à jour le statut durant l'escalade
+        def escalation_callback(level_info):
+            nonlocal current_level
+            current_level = level_info['level']
+            
+            self.update_state(
+                state='PROGRESS',
+                meta={
+                    'status': f"Niveau {level_info['level']}: {level_info['preset_name']}",
+                    'progress': 20 + (level_info['level'] * 15),
+                    'target': target,
+                    'phase': f"Escalade niveau {level_info['level']}",
+                    'current_preset': level_info['preset_name'],
+                    'escalation_history': escalation_history
+                }
+            )
+            
+            escalation_history.append({
+                'level': level_info['level'],
+                'preset': level_info['preset_name'],
+                'started_at': time.time(),
+                'status': 'running'
+            })
+        
+        # Exécution du scan avec escalade
+        result = port_scanner.scan_host_ports(
+            target, 
+            options, 
+            escalation_config
+        )
+        
+        # Mise à jour finale
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'status': 'Finalisation des résultats...',
+                'progress': 90,
+                'target': target,
+                'phase': 'Finalisation'
+            }
+        )
+        
+        # Enrichir les résultats
+        if result.get('success'):
+            ports_found = len(result.get('open_ports', []))
+            services_found = len(result.get('services', []))
+            
+            # Résumé selon escalade
+            if result.get('escalation_used'):
+                final_level = result.get('final_level', 1)
+                summary = f"Escalade niveau {final_level}: {ports_found} ports, {services_found} services"
+            else:
+                summary = f"Scan simple: {ports_found} ports, {services_found} services"
+            
+            # Recommandations selon les résultats
+            recommendations = []
+            if ports_found == 0 and not result.get('escalation_used'):
+                recommendations.append("Aucun port trouvé - Essayez un scan plus approfondi")
+            elif ports_found > 0:
+                recommendations.append(f"Services détectés - Procédez à l'énumération")
+        else:
+            summary = f"Échec du scan: {result.get('error', 'Erreur inconnue')}"
+            recommendations = ["Vérifiez la connectivité réseau"]
+        
+        # Résultat final structuré
+        final_result = {
+            'task_id': self.request.id,
+            'module': 'Scan Ports Amélioré',
+            'target': target,
+            'success': result.get('success', False),
+            'scan_duration': time.time() - start_time,
+            'escalation_used': result.get('escalation_used', False),
+            'final_level': result.get('final_level', 1),
+            'ports_found': len(result.get('open_ports', [])),
+            'services_found': len(result.get('services', [])),
+            'result_data': result,
+            'recommendations': recommendations,
+            'escalation_config': escalation_config
+        }
+        
+        # Finalisation
+        db.update_task_status(
+            task_id=self.request.id,
+            status='completed',
+            progress=100,
+            result_summary=summary
+        )
+        
+        # Sauvegarder les résultats détaillés
+        try:
+            if hasattr(db, 'save_module_result'):
+                db.save_module_result(
+                    task_id=self.request.id,
+                    module_name='enhanced_port_scan',
+                    result_data=final_result
+                )
+        except Exception as save_error:
+            logger.warning(f"⚠️ Impossible de sauvegarder les résultats détaillés: {save_error}")
+        
+        logger.info(f"✅ [Celery] Scan ports amélioré terminé: {summary}")
+        
+        return final_result
+        
+    except Exception as e:
+        logger.error(f"💥 [Celery] Exception scan ports amélioré: {e}")
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='failed',
+            error_message=str(e)
+        )
+        raise
+
+@celery_app.task(bind=True, name='tasks.adaptive_network_audit')
+def adaptive_network_audit(self, target: str, config: Dict = None):
+    """Tâche maîtresse qui orchestre un audit adaptatif complet"""
+    db = get_db_manager()
+    if not db:
+        raise Exception("Impossible d'accéder à la base de données")
+    
+    try:
+        start_time = time.time()
+        logger.info(f"🧠 [Celery] Audit adaptatif démarré sur: {target}")
+        
+        # Configuration par défaut
+        if not config:
+            config = {
+                'discovery_strategy': 'adaptive',
+                'port_strategy': 'adaptive',
+                'escalation_mode': 'conservative',
+                'max_auto_level': 2
+            }
+        
+        # Mise à jour du statut initial
+        db.update_task_status(
+            task_id=self.request.id,
+            status='running',
+            progress=0
+        )
+        
+        audit_phases = []
+        
+        # Phase 1: Découverte réseau adaptative
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'status': 'Phase 1/3: Découverte réseau adaptative...',
+                'progress': 5,
+                'target': target,
+                'phase': 'Découverte réseau',
+                'audit_type': 'adaptive'
+            }
+        )
+        
+        # Options de découverte selon la stratégie
+        discovery_options = {
+            'timing': config.get('timing', 'T4'),
+            'include_top_ports': True,
+            'no_ping': config.get('no_ping', False),
+            'arp_ping': config.get('arp_ping', False)
+        }
+        
+        from modules.network_discovery import NetworkDiscoveryTool
+        discovery_tool = NetworkDiscoveryTool()
+        discovery_result = discovery_tool.discover_network(target, discovery_options)
+        
+        if not discovery_result.get('success'):
+            raise Exception(f"Échec découverte réseau: {discovery_result.get('error')}")
+        
+        hosts_found = discovery_result.get('hosts_found', 0)
+        audit_phases.append({
+            'phase': 'discovery',
+            'success': True,
+            'hosts_found': hosts_found,
+            'duration': discovery_result.get('duration_seconds', 0)
+        })
+        
+        if hosts_found == 0:
+            raise Exception("Aucun hôte découvert - arrêt de l'audit")
+        
+        # Phase 2: Scan de ports adaptatif
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'status': f'Phase 2/3: Scan ports adaptatif sur {hosts_found} hôte(s)...',
+                'progress': 35,
+                'target': target,
+                'phase': 'Scan ports adaptatif'
+            }
+        )
+        
+        # Configuration de l'escalade selon le mode
+        escalation_modes = {
+            'conservative': {'auto_escalate': True, 'max_auto_level': 2, 'ask_user_above': True},
+            'aggressive': {'auto_escalate': True, 'max_auto_level': 3, 'ask_user_above': False},
+            'manual': {'auto_escalate': False, 'max_auto_level': 1, 'ask_user_above': True}
+        }
+        
+        escalation_config = escalation_modes.get(
+            config.get('escalation_mode', 'conservative'),
+            escalation_modes['conservative']
+        )
+        
+        # Options pour le scan de ports
+        port_options = {
+            'ports': 'docker_quick',  # Point de départ
+            'timing': config.get('timing', 'T4'),
+            'service_detection': config.get('service_detection', True),
+            'os_detection': config.get('os_detection', False),
+            'default_scripts': config.get('default_scripts', False)
+        }
+        
+        from modules.port_scanner import PortScanner
+        port_scanner = PortScanner()
+        
+        # Scanner chaque hôte avec escalade
+        all_port_results = []
+        total_hosts = len(discovery_result.get('hosts', []))
+        
+        for i, host in enumerate(discovery_result.get('hosts', [])):
+            host_ip = host.get('ip')
+            
+            # Mise à jour de progression
+            progress = 35 + (i * 45 // total_hosts)
+            self.update_state(
+                state='PROGRESS',
+                meta={
+                    'status': f'Scan adaptatif {host_ip} ({i+1}/{total_hosts})',
+                    'progress': progress,
+                    'target': target,
+                    'phase': 'Scan ports adaptatif',
+                    'current_host': host_ip
+                }
+            )
+            
+            # Scan avec escalade automatique
+            host_result = port_scanner.scan_host_ports(host_ip, port_options, escalation_config)
+            all_port_results.append(host_result)
+        
+        # Analyse des résultats
+        successful_scans = len([r for r in all_port_results if r.get('success')])
+        total_ports = sum(len(r.get('open_ports', [])) for r in all_port_results)
+        total_services = sum(len(r.get('services', [])) for r in all_port_results)
+        hosts_with_ports = len([r for r in all_port_results if r.get('open_ports')])
+        escalations_used = len([r for r in all_port_results if r.get('escalation_used')])
+        
+        audit_phases.append({
+            'phase': 'port_scan',
+            'success': True,
+            'hosts_scanned': total_hosts,
+            'successful_scans': successful_scans,
+            'hosts_with_ports': hosts_with_ports,
+            'total_ports': total_ports,
+            'total_services': total_services,
+            'escalations_used': escalations_used
+        })
+        
+        # Phase 3: Analyse et recommandations
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'status': 'Phase 3/3: Analyse des résultats et recommandations...',
+                'progress': 85,
+                'target': target,
+                'phase': 'Analyse'
+            }
+        )
+        
+        # Générer des recommandations intelligentes
+        recommendations = port_scanner.get_scan_recommendations(all_port_results)
+        
+        # Identifier les prochaines étapes suggérées
+        next_steps = []
+        if total_services > 0:
+            next_steps.append({
+                'action': 'service_enumeration',
+                'description': f'Énumération détaillée de {total_services} services',
+                'priority': 'high'
+            })
+        
+        if hosts_with_ports > 0:
+            next_steps.append({
+                'action': 'vulnerability_scan', 
+                'description': f'Scan vulnérabilités sur {hosts_with_ports} hôtes',
+                'priority': 'high'
+            })
+        
+        if escalations_used > 0:
+            next_steps.append({
+                'action': 'review_escalations',
+                'description': f'Réviser {escalations_used} escalades pour optimisation',
+                'priority': 'medium'
+            })
+        
+        # Compilation finale de l'audit
+        total_duration = time.time() - start_time
+        
+        adaptive_audit_result = {
+            'task_id': self.request.id,
+            'audit_type': 'adaptive',
+            'target': target,
+            'success': True,
+            'total_duration': total_duration,
+            'phases': audit_phases,
+            'discovery_results': discovery_result,
+            'port_scan_results': {
+                'success': True,
+                'results': all_port_results,
+                'summary': {
+                    'hosts_scanned': total_hosts,
+                    'successful_scans': successful_scans,
+                    'hosts_with_ports': hosts_with_ports,
+                    'total_ports': total_ports,
+                    'total_services': total_services,
+                    'escalations_used': escalations_used
+                }
+            },
+            'recommendations': recommendations,
+            'next_steps': next_steps,
+            'config_used': config
+        }
+        
+        # Résumé textuel intelligent
+        summary_parts = []
+        summary_parts.append(f"Audit adaptatif: {hosts_found} hôtes découverts")
+        summary_parts.append(f"{hosts_with_ports} avec ports ouverts")
+        summary_parts.append(f"{total_ports} ports, {total_services} services")
+        if escalations_used > 0:
+            summary_parts.append(f"{escalations_used} escalades utilisées")
+        
+        summary = ", ".join(summary_parts)
+        
+        # Finalisation
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'status': 'Sauvegarde des résultats...',
+                'progress': 95,
+                'target': target,
+                'phase': 'Finalisation'
+            }
+        )
+        
+        db.update_task_status(
+            task_id=self.request.id,
+            status='completed',
+            progress=100,
+            result_summary=summary
+        )
+        
+        # Sauvegarder le résumé de l'audit adaptatif
+        try:
+            if hasattr(db, 'save_module_result'):
+                db.save_module_result(
+                    task_id=self.request.id,
+                    module_name='adaptive_audit',
+                    result_data=adaptive_audit_result
+                )
+        except Exception as save_error:
+            logger.warning(f"⚠️ Impossible de sauvegarder l'audit adaptatif: {save_error}")
+        
+        logger.info(f"🧠 [Celery] Audit adaptatif terminé: {summary}")
+        return adaptive_audit_result
+        
+    except Exception as e:
+        logger.error(f"💥 [Celery] Exception audit adaptatif: {e}")
         
         db.update_task_status(
             task_id=self.request.id,
