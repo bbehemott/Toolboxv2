@@ -6,12 +6,21 @@ class Config:
     
     # Répertoires
     BASE_DIR = Path(__file__).parent
-    DATABASE_PATH = BASE_DIR / 'toolbox.db'
     LOGS_DIR = BASE_DIR / 'logs'
     
     # Flask
     SECRET_KEY = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
     DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    
+    # PostgreSQL Database
+    DB_HOST = os.getenv('DB_HOST', 'db')
+    DB_PORT = os.getenv('DB_PORT', '5432')
+    DB_NAME = os.getenv('DB_NAME', 'toolbox')
+    DB_USER = os.getenv('DB_USER', 'toolbox_user')
+    DB_PASSWORD = os.getenv('DB_PASSWORD', 'toolbox_pass')
+    
+    # Database URL
+    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
     # Celery
     CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
@@ -40,7 +49,7 @@ class Config:
     @classmethod
     def validate_config(cls):
         """Valide la configuration"""
-        required_env = []
+        required_env = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']
         
         missing = [var for var in required_env if not os.getenv(var)]
         if missing:
@@ -60,7 +69,7 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     """Configuration de test"""
     TESTING = True
-    DATABASE_PATH = ':memory:'
+    DB_NAME = 'toolbox_test'
 
 # Configuration par défaut
 config = {
