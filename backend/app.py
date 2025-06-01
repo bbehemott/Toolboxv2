@@ -33,7 +33,7 @@ def create_app(config_name=None):
     setup_logging(app, app_config)
     
     # Initialiser la base de données
-    db_manager = DatabaseManager(app_config.DATABASE_PATH)
+    db_manager = DatabaseManager(app_config.DATABASE_URL)
     db_manager.create_default_admin()
     
     # Initialiser l'authentification

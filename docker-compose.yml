@@ -1,30 +1,127 @@
+version: '3.8'
+
 services:
-  # ===== REDIS (Broker Celery) =====
+  # Application Flask
+  app:
+    build: .
+    command: python backend/app.py
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - SECRET_KEY=your-secret-key-here
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GRAYLOG_HOST=graylog
+      - GRAYLOG_PORT=12201
+      # Variables PostgreSQL ajoutées
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=toolbox
+      - DB_USER=toolbox_user
+      - DB_PASSWORD=toolbox_password
+    depends_on:
+      - redis
+      - postgres
+      - graylog
+    networks:
+      - toolbox-network
+    volumes:
+      - .:/app
+    container_name: toolbox-app
+
+  # Worker Celery
+  worker:
+    build: .
+    working_dir: /app/backend
+    command: celery -A celery_app worker --loglevel=info
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GRAYLOG_HOST=graylog
+      - GRAYLOG_PORT=12201
+      # Variables PostgreSQL ajoutées pour le worker
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=toolbox
+      - DB_USER=toolbox_user
+      - DB_PASSWORD=toolbox_password
+    depends_on:
+      - redis
+      - postgres
+      - app
+    networks:
+      - toolbox-network
+    volumes:
+      - .:/app
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "toolbox-worker"
+    container_name: toolbox-worker
+
+  # Flower (monitoring Celery)
+  flower:
+    build: .
+    working_dir: /app/backend
+    command: celery -A celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - worker
+    networks:
+      - toolbox-network
+    volumes:
+      - .:/app
+    container_name: toolbox-flower
+
+  # Redis (broker Celery)
   redis:
     image: redis:7-alpine
-    container_name: toolbox-redis
     ports:
       - "6379:6379"
     networks:
       - toolbox-network
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    container_name: toolbox-redis
 
-  # ===== ELASTICSEARCH (Logging) =====
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
-    container_name: toolbox-elasticsearch
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
     environment:
+      - POSTGRES_DB=toolbox
+      - POSTGRES_USER=toolbox_user
+      - POSTGRES_PASSWORD=toolbox_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - toolbox-network
+    container_name: toolbox-postgres
+
+  # MongoDB pour Graylog
+  mongo:
+    image: mongo:5.0
+    networks:
+      - toolbox-network
+    container_name: toolbox-mongo
+
+  # Elasticsearch pour Graylog
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:7.10.2
+    environment:
+      - http.host=0.0.0.0
+      - transport.host=localhost
+      - network.host=0.0.0.0
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-      - xpack.security.enabled=false
     ulimits:
       memlock:
         soft: -1
@@ -32,160 +129,44 @@ services:
     mem_limit: 1g
     networks:
       - toolbox-network
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-    restart: unless-stopped
+    container_name: toolbox-elasticsearch
 
-  # ===== MONGODB (Graylog) =====
-  mongo:
-    image: mongo:4.2
-    container_name: toolbox-mongo
+  # Graylog pour centralisation des logs
+  graylog:
+    image: graylog/graylog:4.3
+    environment:
+      - GRAYLOG_PASSWORD_SECRET=somepasswordpepper
+      - GRAYLOG_ROOT_PASSWORD_SHA2=8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918
+      - GRAYLOG_HTTP_EXTERNAL_URI=http://127.0.0.1:9000/
+      - GRAYLOG_ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - GRAYLOG_MONGODB_URI=mongodb://mongo/graylog
+    entrypoint: /usr/bin/tini -- wait-for-it elasticsearch:9200 --  /docker-entrypoint.sh
     networks:
       - toolbox-network
-    volumes:
-      - mongodb_data:/data/db
-    restart: unless-stopped
-
-  # ===== GRAYLOG (Logging centralisé) =====
-  graylog:
-    image: graylog/graylog:4.2
-    container_name: toolbox-graylog
-    environment:
-      GRAYLOG_PASSWORD_SECRET: "toolboxsecretkey2025changeInProduction"
-      GRAYLOG_ROOT_PASSWORD_SHA2: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"  # admin
-      GRAYLOG_HTTP_EXTERNAL_URI: "http://127.0.0.1:9000/"
+    restart: always
     depends_on:
       - mongo
       - elasticsearch
-    networks:
-      - toolbox-network
     ports:
-      - "9000:9000"       # Interface web Graylog
-      - "12201:12201/udp" # GELF UDP input
-    volumes:
-      - graylog_data:/usr/share/graylog/data
-    restart: unless-stopped
+      - "9000:9000"      # Interface web Graylog
+      - "1514:1514"      # Syslog
+      - "1514:1514/udp"  # Syslog UDP
+      - "12201:12201"    # GELF
+      - "12201:12201/udp" # GELF UDP
+    container_name: toolbox-graylog
 
-  # ===== APPLICATION PRINCIPALE =====
-  toolbox-app:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    container_name: toolbox-app
-    volumes:
-      - ./backend:/app
-    environment:
-      - FLASK_ENV=development
-      - FLASK_DEBUG=true
-      - FLASK_SECRET_KEY=dev-secret-change-in-production
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - GRAYLOG_HOST=graylog
-      - GRAYLOG_PORT=12201
-    ports:
-      - "5000:5000"
-    networks:
-      - toolbox-network
-    depends_on:
-      - redis
-      - graylog
-    restart: unless-stopped
-    logging:
-      driver: "gelf"
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
-        tag: "toolbox-app"
-
-  # ===== CELERY WORKER =====
-  toolbox-worker:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    container_name: toolbox-worker
-    volumes:
-      - ./backend:/app
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    networks:
-      - toolbox-network
-    depends_on:
-      - redis
-    command: celery -A celery_app worker --loglevel=info --concurrency=4
-    restart: unless-stopped
-    logging:
-      driver: "gelf"
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
-        tag: "toolbox-worker"
-
-  # ===== CELERY FLOWER (Monitoring) =====
-  toolbox-flower:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    container_name: toolbox-flower
-    volumes:
-      - ./backend:/app
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    networks:
-      - toolbox-network
-    depends_on:
-      - redis
-    command: celery -A celery_app flower --port=5555 --broker=redis://redis:6379/0
-    ports:
-      - "5555:5555"
-    restart: unless-stopped
-
-  # ===== CIBLE DE TEST DVWA =====
+  # DVWA (Damn Vulnerable Web Application) pour tests
   dvwa:
     image: vulnerables/web-dvwa
-    container_name: toolbox-dvwa
     ports:
       - "8080:80"
     networks:
       - toolbox-network
-    environment:
-      - MYSQL_HOSTNAME=dvwa-mysql
-      - MYSQL_DATABASE=dvwa
-      - MYSQL_USERNAME=root
-      - MYSQL_PASSWORD=dvwa_password
-    depends_on:
-      - dvwa-mysql
-    restart: unless-stopped
+    container_name: toolbox-dvwa
 
-  # MySQL pour DVWA
-  dvwa-mysql:
-    image: mysql:5.7
-    container_name: toolbox-dvwa-mysql
-    environment:
-      - MYSQL_ROOT_PASSWORD=dvwa_password
-      - MYSQL_DATABASE=dvwa
-    networks:
-      - toolbox-network
-    volumes:
-      - dvwa_mysql_data:/var/lib/mysql
-    restart: unless-stopped
-
-# ===== VOLUMES =====
-volumes:
-  redis_data:
-    driver: local
-  elasticsearch_data:
-    driver: local
-  mongodb_data:
-    driver: local
-  graylog_data:
-    driver: local
-  dvwa_mysql_data:
-    driver: local
-
-# ===== RÉSEAU =====
 networks:
   toolbox-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
