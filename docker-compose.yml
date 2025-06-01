@@ -1,4 +1,3 @@
-
 services:
   # ===== REDIS (Broker Celery) =====
   redis:
@@ -73,10 +72,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: toolbox-app
-    privileged: true  # Nécessaire pour Nmap et sockets bruts
     volumes:
       - ./backend:/app
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=true
@@ -105,10 +102,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: toolbox-worker
-    privileged: true  # Nécessaire pour les outils de scan
     volumes:
       - ./backend:/app
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -144,8 +139,7 @@ services:
       - "5555:5555"
     restart: unless-stopped
 
-  # ===== CIBLES DE TEST =====
-  # DVWA (Application web vulnérable)
+  # ===== CIBLE DE TEST DVWA =====
   dvwa:
     image: vulnerables/web-dvwa
     container_name: toolbox-dvwa
