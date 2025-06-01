@@ -452,7 +452,6 @@ def port_scan(self, hosts_data: Dict, options: Dict = None):
         )
         
         # Import de l'outil de scan de ports
-        from modules.port_scanner import PortScanner
         port_scanner = PortScanner()
         
         # Scan des ports pour chaque hôte
@@ -782,7 +781,6 @@ def full_network_audit(self, target: str, options: Dict = None):
             'os_detection': options.get('os_detection', False)
         }
         
-        from modules.port_scanner import PortScanner
         port_scanner = PortScanner()
 
         hosts = discovery_result.get('hosts', [])
@@ -1172,7 +1170,6 @@ def exploitation(self, vulnerabilities_data: Dict, options: Dict = None):
 @celery_app.task(bind=True, name='tasks.enhanced_port_scan')
 def enhanced_port_scan(self, target: str, options: Dict = None, escalation_config: Dict = None):
 
-    from modules.port_scanner import PortScanner
 
     """Tâche Celery pour le scan de ports avec escalade automatique"""
     db = get_db_manager()
@@ -1180,6 +1177,8 @@ def enhanced_port_scan(self, target: str, options: Dict = None, escalation_confi
         raise Exception("Impossible d'accéder à la base de données")
     
     try:
+        from modules.port_scanner import PortScanner
+
         start_time = time.time()
         logger.info(f"🔍 [Celery] Scan ports amélioré démarré: {target}")
         
@@ -1213,7 +1212,6 @@ def enhanced_port_scan(self, target: str, options: Dict = None, escalation_confi
         )
         
         # Import du scanner amélioré
-        from modules.port_scanner import PortScanner
         port_scanner = PortScanner()
         
         # Métadonnées d'escalade
@@ -1341,6 +1339,9 @@ def adaptive_network_audit(self, target: str, config: Dict = None):
         raise Exception("Impossible d'accéder à la base de données")
     
     try:
+        from modules.network_discovery import NetworkDiscoveryTool
+        from modules.port_scanner import PortScanner
+
         start_time = time.time()
         logger.info(f"🧠 [Celery] Audit adaptatif démarré sur: {target}")
         
@@ -1382,7 +1383,6 @@ def adaptive_network_audit(self, target: str, config: Dict = None):
             'arp_ping': config.get('arp_ping', False)
         }
         
-        from modules.network_discovery import NetworkDiscoveryTool
         discovery_tool = NetworkDiscoveryTool()
         discovery_result = discovery_tool.discover_network(target, discovery_options)
         
@@ -1432,7 +1432,6 @@ def adaptive_network_audit(self, target: str, config: Dict = None):
             'default_scripts': config.get('default_scripts', False)
         }
         
-        from modules.port_scanner import PortScanner
         port_scanner = PortScanner()
         
         # Scanner chaque hôte avec escalade
