@@ -584,24 +584,7 @@ function showDiscoveryResults(result) {
         }
         
         // Résultats des scans de ports
-        if (resultData.port_scans && resultData.port_scans.length > 0) {
-            html += `<h6>🔐 Scan de ports détaillé :</h6>`;
-            
-            resultData.port_scans.forEach(scan => {
-                const hostIP = scan.host;
-                const originalHost = scan.original_host || scan.host;
-                const portsData = scan.ports;
-                
-                html += `
-                    <div class="card mb-3 border-info">
-                        <div class="card-header bg-light">
-                            <h6 class="mb-0">🖥️ ${hostIP}</h6>
-                            ${originalHost !== hostIP ? `<small class="text-muted">${originalHost}</small>` : ''}
-                        </div>
-                        <div class="card-body">
-                `;
-                
-                if (portsData && portsData.success && portsData.parsed) {
+        if (portsData && portsData.success && portsData.parsed) {
                     const rawOutput = portsData.parsed.raw_output || portsData.stdout;
                     const portInfo = parseNmapPortOutput(rawOutput);
                     
@@ -609,27 +592,53 @@ function showDiscoveryResults(result) {
                         html += `
                             <div class="table-responsive">
                                 <table class="table table-sm">
-                                    <thead>
+                                    <thead class="table-success">
                                         <tr>
                                             <th>Port</th>
                                             <th>État</th>
                                             <th>Service</th>
+                                            <th>Action recommandée</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                         `;
                         
                         portInfo.forEach(port => {
-                            const badgeClass = port.state === 'open' ? 'success' : 
-                                             port.state === 'closed' ? 'secondary' : 'warning';
-                            const icon = port.state === 'open' ? '🔓' : 
-                                       port.state === 'closed' ? '🔒' : '❓';
+                            // Recommandations selon le service
+                            let recommendation = '';
+                            switch(port.service) {
+                                case 'ssh':
+                                    recommendation = '🔨 Test force brute SSH';
+                                    break;
+                                case 'http':
+                                case 'http-proxy':
+                                    recommendation = '🕷️ Audit web HTTP';
+                                    break;
+                                case 'https':
+                                    recommendation = '🕷️ Audit web HTTPS';
+                                    break;
+                                case 'ftp':
+                                    recommendation = '📁 Test accès anonyme FTP';
+                                    break;
+                                case 'mysql':
+                                    recommendation = '🗃️ Test MySQL credentials';
+                                    break;
+                                case 'postgresql':
+                                    recommendation = '🗃️ Test PostgreSQL credentials';
+                                    break;
+                                case 'telnet':
+                                    recommendation = '⚠️ Connexion non sécurisée';
+                                    break;
+                                default:
+                                    recommendation = '🔍 Énumération du service';
+                            }
                             
                             html += `
-                                <tr>
+                                <tr class="table-warning">
                                     <td><strong>${port.port}</strong></td>
-                                    <td><span class="badge bg-${badgeClass}">${icon} ${port.state.toUpperCase()}</span></td>
+                                    <td><span class="badge bg-success">🔓 OUVERT</span></td>
                                     <td><code>${port.service}</code></td>
+                                    <td><small class="text-danger">${recommendation}</small></td>
                                 </tr>
                             `;
                         });
@@ -638,29 +647,21 @@ function showDiscoveryResults(result) {
                                     </tbody>
                                 </table>
                             </div>
+                            <div class="alert alert-warning mt-2">
+                                <strong>⚠️ ${portInfo.length} port(s) ouvert(s) détecté(s) !</strong>
+                                <br><small>Ces ports méritent une attention particulière pour la sécurité.</small>
+                            </div>
                         `;
                     } else {
                         html += `
-                            <p class="text-muted">
-                                <em>Aucun port ouvert détecté sur les ports standards testés.</em>
-                            </p>
+                            <div class="alert alert-success">
+                                <strong>✅ Aucun port ouvert détecté</strong>
+                                <p class="mb-0">Tous les ports testés sont fermés ou filtrés. C'est un bon signe de sécurité !</p>
+                            </div>
                         `;
                     }
                 } else {
-                    html += `
-                        <div class="alert alert-warning">
-                            <strong>⚠️ Scan de ports incomplet</strong><br>
-                            <small>Le scan de ports n'a pas pu être effectué correctement sur cet hôte.</small>
-                        </div>
-                    `;
-                }
-                
-                html += `
-                        </div>
-                    </div>
-                `;
-            });
-        }
+
         
         // Conseils et actions suivantes
         html += `
@@ -725,20 +726,24 @@ function showDiscoveryResults(result) {
     }
 }
 
-// Fonction pour parser la sortie Nmap des ports
 function parseNmapPortOutput(output) {
     const ports = [];
     const lines = output.split('\n');
     
     for (const line of lines) {
-        // Format: "22/tcp   closed ssh"
+        // Format: "22/tcp   open ssh" ou "80/tcp   closed http"
         const portMatch = line.match(/^(\d+)\/tcp\s+(\w+)\s+(.+)$/);
         if (portMatch) {
-            ports.push({
+            const port = {
                 port: portMatch[1] + '/tcp',
                 state: portMatch[2],
                 service: portMatch[3]
-            });
+            };
+            
+            // ✅ GARDER SEULEMENT LES PORTS OUVERTS
+            if (port.state === 'open') {
+                ports.push(port);
+            }
         }
     }
     
@@ -785,7 +790,6 @@ Utilisateur : ${currentUser || 'Anonyme'}
     downloadTextFile(report, `discovery-report-${timestamp}.txt`);
 }
 
-<script>
 function showWebAuditResults(result) {
     const resultsDiv = document.getElementById('task-results');
     const contentDiv = document.getElementById('results-content');
@@ -975,18 +979,182 @@ function showGenericResults(result) {
 
 
 function showResults(result) {
+    console.log('📊 Affichage des résultats:', result);
+    
+    // Détecter automatiquement le type de résultats
+    const resultData = result.result_data || result.results;
+    
+    // Si c'est un scan de découverte (contient ping_scan ou port_scans)
+    if (resultData && (resultData.ping_scan || resultData.port_scans)) {
+        console.log('🌐 Détecté: Scan de découverte réseau');
+        showDiscoveryResults(result);
+        return;
+    }
+    
+    // Si c'est un audit web (contient nikto, nuclei, sqlmap)
+    if (resultData && resultData.results && 
+        (resultData.results.nikto || resultData.results.nuclei || resultData.results.sqlmap)) {
+        console.log('🕷️ Détecté: Audit web');
+        showWebAuditResults(result);
+        return;
+    }
+    
+    // Sinon, affichage amélioré pour les autres types
     const resultsDiv = document.getElementById('task-results');
     const contentDiv = document.getElementById('results-content');
     
-    // Formatter les résultats selon le type
-    let resultHtml = `
-        <h6>📊 Résultats détaillés :</h6>
-        <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;">${JSON.stringify(result, null, 2)}</pre>
-    `;
+    let html = '<h6>📊 Résultats détaillés :</h6>';
     
-    contentDiv.innerHTML = resultHtml;
+    // Essayer de formatter selon le contenu
+    if (resultData) {
+        // Si c'est un test d'outils
+        if (resultData.tools_available) {
+            html += formatToolsStatus(resultData);
+        }
+        // Si c'est un scan de force brute
+        else if (resultData.credentials_found || resultData.service) {
+            html += formatBruteForceResults(resultData);
+        }
+        // Affichage JSON amélioré pour tout le reste
+        else {
+            html += `
+                <div class="alert alert-info">
+                    <strong>✅ Tâche terminée avec succès</strong>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h6>📋 Données brutes</h6>
+                    </div>
+                    <div class="card-body">
+                        <pre class="bg-light p-3 rounded" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-size: 14px;">${JSON.stringify(result, null, 2)}</pre>
+                    </div>
+                </div>
+            `;
+        }
+    } else {
+        // Fallback si pas de données structurées
+        html += `
+            <div class="card">
+                <div class="card-body">
+                    <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap;">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            </div>
+        `;
+    }
+    
+    contentDiv.innerHTML = html;
     resultsDiv.style.display = 'block';
 }
+
+// Fonction pour formatter le statut des outils
+function formatToolsStatus(data) {
+    let html = `
+        <div class="alert alert-success">
+            <strong>🔧 Vérification des outils terminée</strong>
+        </div>
+        <h6>🛠️ Statut des outils :</h6>
+        <div class="row">
+    `;
+    
+    const tools = data.tools_available || {};
+    Object.entries(tools).forEach(([tool, available]) => {
+        const status = available ? 'success' : 'danger';
+        const icon = available ? '✅' : '❌';
+        
+        html += `
+            <div class="col-md-4 mb-3">
+                <div class="card border-${status}">
+                    <div class="card-body text-center">
+                        <h5>${icon}</h5>
+                        <h6>${tool.toUpperCase()}</h6>
+                        <span class="badge bg-${status}">${available ? 'Disponible' : 'Indisponible'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    // Ajouter les wordlists si disponibles
+    if (data.wordlists) {
+        html += `
+            <h6 class="mt-4">📚 Wordlists :</h6>
+            <div class="card">
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+        `;
+        
+        Object.entries(data.wordlists).forEach(([name, path]) => {
+            html += `<li class="list-group-item d-flex justify-content-between">
+                <span><strong>${name}:</strong></span>
+                <code>${path}</code>
+            </li>`;
+        });
+        
+        html += `
+                    </ul>
+                </div>
+            </div>
+        `;
+    }
+    
+    return html;
+}
+
+// Fonction pour formatter les résultats de force brute
+function formatBruteForceResults(data) {
+    let html = `
+        <div class="alert alert-info">
+            <strong>🔨 Force brute terminé</strong>
+        </div>
+    `;
+    
+    if (data.credentials_found && data.credentials_found.length > 0) {
+        html += `
+            <div class="alert alert-warning">
+                <strong>⚠️ Credentials trouvés !</strong>
+            </div>
+            <h6>🔑 Credentials découverts :</h6>
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Login</th>
+                            <th>Password</th>
+                            <th>Service</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        data.credentials_found.forEach(cred => {
+            html += `
+                <tr>
+                    <td><code>${cred.login}</code></td>
+                    <td><code>${cred.password}</code></td>
+                    <td>${data.service || 'N/A'}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="alert alert-success">
+                <strong>✅ Aucun credential faible trouvé</strong>
+                <p>Le service ${data.service || 'cible'} semble résistant aux attaques par dictionnaire.</p>
+            </div>
+        `;
+    }
+    
+    return html;
+}
+
 
 function showError(error) {
     const errorDiv = document.getElementById('task-errors');
