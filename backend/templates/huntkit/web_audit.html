@@ -1,3 +1,327 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Web - HuntKit{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h4 class="mb-0">🕷️ Audit Web Automatisé</h4>
+                    <p class="mb-0">Scan de vulnérabilités web avec Nikto, Nuclei et SQLMap</p>
+                </div>
+                <div class="card-body">
+                    
+                    <!-- Formulaire d'audit web -->
+                    <form id="webAuditForm">
+                        <div class="row">
+                            
+                            <!-- Cible -->
+                            <div class="col-md-8 mb-3">
+                                <label for="target" class="form-label">🎯 Cible (URL ou IP)</label>
+                                <input type="text" class="form-control" id="target" name="target" 
+                                       placeholder="http://example.com ou 192.168.1.100" required>
+                                <div class="form-text">
+                                    Exemples: http://localhost:8080, https://example.com, 192.168.1.100
+                                </div>
+                            </div>
+                            
+                            <!-- Port -->
+                            <div class="col-md-4 mb-3">
+                                <label for="port" class="form-label">🔌 Port</label>
+                                <input type="number" class="form-control" id="port" name="port" 
+                                       value="80" min="1" max="65535">
+                            </div>
+                            
+                        </div>
+                        
+                        <div class="row">
+                            
+                            <!-- SSL -->
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="ssl" name="ssl">
+                                    <label class="form-check-label" for="ssl">
+                                        🔒 HTTPS/SSL
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Options avancées -->
+                            <div class="col-md-6 mb-3">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" 
+                                        data-bs-toggle="collapse" data-bs-target="#advancedOptions">
+                                    ⚙️ Options avancées
+                                </button>
+                            </div>
+                            
+                        </div>
+                        
+                        <!-- Options avancées (masquées par défaut) -->
+                        <div class="collapse" id="advancedOptions">
+                            <div class="card card-body bg-light mb-3">
+                                
+                                <h6>🛠️ Configuration des outils</h6>
+                                
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enable_nikto" name="enable_nikto" checked>
+                                            <label class="form-check-label" for="enable_nikto">
+                                                🕷️ Nikto
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enable_nuclei" name="enable_nuclei" checked>
+                                            <label class="form-check-label" for="enable_nuclei">
+                                                🎯 Nuclei
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enable_sqlmap" name="enable_sqlmap" checked>
+                                            <label class="form-check-label" for="enable_sqlmap">
+                                                💉 SQLMap
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Paramètres additionnels -->
+                                <div class="mt-3">
+                                    <label for="custom_headers" class="form-label">📋 Headers personnalisés</label>
+                                    <textarea class="form-control" id="custom_headers" name="custom_headers" rows="2" 
+                                              placeholder="User-Agent: Custom Agent&#10;Authorization: Bearer token123"></textarea>
+                                </div>
+                                
+                                <div class="mt-3">
+                                    <label for="cookies" class="form-label">🍪 Cookies</label>
+                                    <input type="text" class="form-control" id="cookies" name="cookies" 
+                                           placeholder="session=abc123; auth=xyz789">
+                                </div>
+                                
+                            </div>
+                        </div>
+                        
+                        <!-- Boutons d'action -->
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-between">
+                            <div>
+                                <button type="submit" class="btn btn-warning btn-lg" id="startAuditBtn">
+                                    🚀 Lancer l'audit web
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="loadPresets()">
+                                    📋 Presets
+                                </button>
+                            </div>
+                            <div>
+                                <button type="button" class="btn btn-outline-info" onclick="testConnection()">
+                                    🔍 Test de connexion
+                                </button>
+                            </div>
+                        </div>
+                        
+                    </form>
+                    
+                    <!-- Zone de statut -->
+                    <div id="audit-status" class="mt-4" style="display: none;">
+                        <div class="alert alert-info">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span id="status-message">🔄 Préparation de l'audit...</span>
+                                <button class="btn btn-sm btn-outline-danger" onclick="cancelAudit()" id="cancelBtn">
+                                    🛑 Annuler
+                                </button>
+                            </div>
+                            <div class="progress mt-2" style="height: 20px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     id="audit-progress" style="width: 0%">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <!-- Presets rapides -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6>⚡ Scans rapides</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-2">
+                            <button class="btn btn-outline-primary w-100" onclick="loadDVWA()">
+                                🎯 DVWA Local
+                            </button>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <button class="btn btn-outline-success w-100" onclick="loadLocalhost()">
+                                🏠 Localhost:5000
+                            </button>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <button class="btn btn-outline-warning w-100" onclick="loadCustom()">
+                                ⚙️ Configuration custom
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</div>
+
+<script>
+let currentTaskId = null;
+let statusInterval = null;
+
+// Gestionnaire de soumission du formulaire
+document.getElementById('webAuditForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    startWebAudit();
+});
+
+function startWebAudit() {
+    const formData = new FormData(document.getElementById('webAuditForm'));
+    const target = formData.get('target');
+    const port = parseInt(formData.get('port')) || 80;
+    const ssl = formData.get('ssl') === 'on';
+    
+    if (!target) {
+        alert('❌ Veuillez spécifier une cible !');
+        return;
+    }
+    
+    // Afficher le statut
+    document.getElementById('audit-status').style.display = 'block';
+    document.getElementById('startAuditBtn').disabled = true;
+    updateStatus('🚀 Lancement de l\'audit web...', 10);
+    
+    // Lancer la tâche
+    fetch('/huntkit/api/web-audit', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            target: target,
+            port: port,
+            ssl: ssl,
+            enable_nikto: formData.get('enable_nikto') === 'on',
+            enable_nuclei: formData.get('enable_nuclei') === 'on',
+            enable_sqlmap: formData.get('enable_sqlmap') === 'on',
+            custom_headers: formData.get('custom_headers'),
+            cookies: formData.get('cookies')
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentTaskId = data.task_id;
+            updateStatus('✅ Tâche lancée ! ID: ' + data.task_id, 20);
+            
+            // Rediriger vers le monitoring
+            setTimeout(() => {
+                window.location.href = '/tasks/status/' + data.task_id;
+            }, 2000);
+        } else {
+            updateStatus('❌ Erreur: ' + data.error, 0);
+            document.getElementById('startAuditBtn').disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        updateStatus('❌ Erreur de communication', 0);
+        document.getElementById('startAuditBtn').disabled = false;
+    });
+}
+
+function updateStatus(message, progress) {
+    document.getElementById('status-message').textContent = message;
+    const progressBar = document.getElementById('audit-progress');
+    progressBar.style.width = progress + '%';
+    progressBar.textContent = progress + '%';
+}
+
+function testConnection() {
+    const target = document.getElementById('target').value;
+    if (!target) {
+        alert('❌ Veuillez spécifier une cible !');
+        return;
+    }
+    
+    updateStatus('🔍 Test de connexion...', 50);
+    
+    // Test simple de ping/connexion
+    fetch('/huntkit/api/test-connection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ target: target })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            updateStatus('✅ Connexion OK : ' + data.message, 100);
+        } else {
+            updateStatus('❌ Connexion échouée : ' + data.error, 0);
+        }
+        
+        setTimeout(() => {
+            document.getElementById('audit-status').style.display = 'none';
+        }, 3000);
+    })
+    .catch(error => {
+        updateStatus('❌ Erreur de test', 0);
+    });
+}
+
+function cancelAudit() {
+    if (currentTaskId) {
+        fetch(`/tasks/api/${currentTaskId}/cancel`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            updateStatus('🛑 Audit annulé', 0);
+            document.getElementById('startAuditBtn').disabled = false;
+        });
+    }
+}
+
+// Presets rapides
+function loadDVWA() {
+    document.getElementById('target').value = 'localhost';
+    document.getElementById('port').value = '8080';
+    document.getElementById('ssl').checked = false;
+}
+
+function loadLocalhost() {
+    document.getElementById('target').value = 'localhost';
+    document.getElementById('port').value = '5000';
+    document.getElementById('ssl').checked = false;
+}
+
+function loadCustom() {
+    // Ouvrir les options avancées
+    document.getElementById('advancedOptions').classList.add('show');
+}
+
+function loadPresets() {
+    const presets = [
+        { name: 'DVWA Local', target: 'localhost', port: 8080, ssl: false },
+        { name: 'App Flask', target: 'localhost', port: 5000, ssl: false },
+        { name: 'Test HTTPS', target: 'httpbin.org', port: 443, ssl: true }
+    ];
+    
+    let options = presets.map(p => `${p.name}: ${p.target}:${p.port}`).join('\n');
+    alert('📋 Presets disponibles:\n\n' + options);
+}
 </script>
 
 {% endblock %}

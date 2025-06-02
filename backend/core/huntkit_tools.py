@@ -422,7 +422,8 @@ class HuntKitIntegration:
             
             logger.info(f"🔍 Scan de ports sur: {host_target}")
             
-            port_result = self.nmap.port_scan(host_target, '22,23,25,53,80,135,139,443,445,993,995,1723,3306,3389,5432,5900,8080')
+            docker_ports = '21,22,23,25,53,80,135,139,443,445,993,995,1433,1723,3000,3306,3389,4369,5000,5432,5555,5672,5984,6379,8000,8080,8443,8888,9000,9042,9200,9300,11211,27017,27018,27019,28017'
+            port_result = self.nmap.port_scan(host_target, docker_ports)
             port_results.append({
                 'host': host_target,
                 'original_host': host['host'],  # Garder le nom original

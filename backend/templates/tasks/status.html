@@ -584,12 +584,33 @@ function showDiscoveryResults(result) {
         }
         
         // Résultats des scans de ports
-        if (portsData && portsData.success && portsData.parsed) {
+        if (resultData.port_scans && resultData.port_scans.length > 0) {
+            html += `<h6>🔐 Scan de ports détaillé :</h6>`;
+            
+            resultData.port_scans.forEach(scan => {
+                const hostIP = scan.host;
+                const originalHost = scan.original_host || scan.host;
+                const portsData = scan.ports;
+                
+                html += `
+                    <div class="card mb-3 border-info">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0">🖥️ ${hostIP}</h6>
+                            ${originalHost !== hostIP ? `<small class="text-muted">${originalHost}</small>` : ''}
+                        </div>
+                        <div class="card-body">
+                `;
+                
+                if (portsData && portsData.success && portsData.parsed) {
                     const rawOutput = portsData.parsed.raw_output || portsData.stdout;
                     const portInfo = parseNmapPortOutput(rawOutput);
                     
                     if (portInfo.length > 0) {
                         html += `
+                            <div class="alert alert-warning">
+                                <strong>⚠️ ${portInfo.length} port(s) ouvert(s) détecté(s) !</strong>
+                                <br><small>Ces ports méritent une attention particulière pour la sécurité.</small>
+                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm">
                                     <thead class="table-success">
@@ -647,10 +668,6 @@ function showDiscoveryResults(result) {
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="alert alert-warning mt-2">
-                                <strong>⚠️ ${portInfo.length} port(s) ouvert(s) détecté(s) !</strong>
-                                <br><small>Ces ports méritent une attention particulière pour la sécurité.</small>
-                            </div>
                         `;
                     } else {
                         html += `
@@ -661,7 +678,20 @@ function showDiscoveryResults(result) {
                         `;
                     }
                 } else {
-
+                    html += `
+                        <div class="alert alert-warning">
+                            <strong>⚠️ Scan de ports incomplet</strong><br>
+                            <small>Le scan de ports n'a pas pu être effectué correctement sur cet hôte.</small>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+        }
         
         // Conseils et actions suivantes
         html += `
@@ -725,6 +755,7 @@ function showDiscoveryResults(result) {
         discoveryDiv.style.display = 'block';
     }
 }
+
 
 function parseNmapPortOutput(output) {
     const ports = [];
