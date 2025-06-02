@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Force Brute - HuntKit{% endblock %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2>🔨 Force Brute HuntKit</h2>
+    <p class="text-muted">Attaques par dictionnaire avec Hydra</p>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>🎯 Configuration de l'attaque</h5>
+        </div>
+        <div class="card-body">
+            <form id="bruteForceForm">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label for="target" class="form-label">Cible</label>
+                        <input type="text" class="form-control" id="target" name="target" 
+                               placeholder="192.168.1.100 ou example.com" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="service" class="form-label">Service</label>
+                        <select class="form-control" id="service" name="service" required>
+                            <option value="ssh">SSH (22)</option>
+                            <option value="ftp">FTP (21)</option>
+                            <option value="telnet">Telnet (23)</option>
+                            <option value="smtp">SMTP (25)</option>
+                            <option value="pop3">POP3 (110)</option>
+                            <option value="imap">IMAP (143)</option>
+                            <option value="http-get">HTTP GET</option>
+                            <option value="http-post-form">HTTP POST Form</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Utilisateurs</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="userMode" id="singleUser" value="single" checked>
+                            <label class="form-check-label" for="singleUser">
+                                Utilisateur unique
+                            </label>
+                        </div>
+                        <input type="text" class="form-control mt-2" id="username" name="username" 
+                               placeholder="admin" value="admin">
+                        
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="radio" name="userMode" id="userList" value="list">
+                            <label class="form-check-label" for="userList">
+                                Liste d'utilisateurs
+                            </label>
+                        </div>
+                        <input type="text" class="form-control mt-2" id="userlist" name="userlist" 
+                               placeholder="/usr/share/wordlists/users.txt" disabled>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Mots de passe</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="passMode" id="passwordList" value="list" checked>
+                            <label class="form-check-label" for="passwordList">
+                                Liste de mots de passe
+                            </label>
+                        </div>
+                        <select class="form-control mt-2" id="passwordlist" name="passwordlist">
+                            <option value="/usr/share/wordlists/top1000-passwords.txt">Top 1000 (rapide)</option>
+                            <option value="/usr/share/wordlists/rockyou.txt">RockYou (complet)</option>
+                        </select>
+                        
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="radio" name="passMode" id="singlePass" value="single">
+                            <label class="form-check-label" for="singlePass">
+                                Mot de passe unique
+                            </label>
+                        </div>
+                        <input type="password" class="form-control mt-2" id="password" name="password" 
+                               placeholder="password123" disabled>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <button type="submit" class="btn btn-warning btn-lg" id="startBruteButton">
+                        🔨 Lancer l'attaque
+                    </button>
+                    <button type="button" class="btn btn-outline-info" onclick="showBruteExamples()">
+                        💡 Exemples
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Monitoring -->
+    <div class="card" id="bruteMonitoringCard" style="display: none;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>🔨 Attaque en cours</h5>
+            <span class="badge bg-warning" id="bruteTaskStatus">En cours...</span>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <span id="bruteStatusText">Initialisation...</span>
+                    <span id="bruteProgressText">0%</span>
+                </div>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" 
+                         id="bruteProgressBar" role="progressbar" style="width: 0%">
+                        0%
+                    </div>
+                </div>
+            </div>
+            
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary" onclick="viewBruteTaskDetails()" id="bruteDetailsBtn">
+                    👁️ Voir détails
+                </button>
+                <button class="btn btn-outline-danger" onclick="cancelBruteTask()" id="bruteCancelBtn">
+                    🛑 Arrêter
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Informations importantes -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="alert alert-warning">
+                <h6>⚠️ Utilisation éthique</h6>
+                <p class="mb-0">N'utilisez ces outils que sur vos propres systèmes ou avec autorisation explicite. Les attaques non autorisées sont illégales.</p>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="alert alert-info">
+                <h6>⏱️ Temps estimés</h6>
+                <ul class="mb-0">
+                    <li><strong>Top 1000:</strong> 5-30 minutes</li>
+                    <li><strong>RockYou:</strong> 30 minutes - plusieurs heures</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentBruteTaskId = null;
+let bruteMonitoringInterval = null;
+
+// Gestion des modes utilisateur/mot de passe
+document.querySelectorAll('input[name="userMode"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        document.getElementById('username').disabled = this.value !== 'single';
+        document.getElementById('userlist').disabled = this.value !== 'list';
+    });
+});
+
+document.querySelectorAll('input[name="passMode"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        document.getElementById('passwordlist').disabled = this.value !== 'list';
+        document.getElementById('password').disabled = this.value !== 'single';
+    });
+});
+
+document.getElementById('bruteForceForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    startBruteForce();
+});
+
+function startBruteForce() {
+    const target = document.getElementById('target').value.trim();
+    const service = document.getElementById('service').value;
+    const userMode = document.querySelector('input[name="userMode"]:checked').value;
+    const passMode = document.querySelector('input[name="passMode"]:checked').value;
+    
+    if (!target || !service) {
+        alert('⚠️ Cible et service requis');
+        return;
+    }
+    
+    const data = {
+        target: target,
+        service: service
+    };
+    
+    // Gestion utilisateurs
+    if (userMode === 'single') {
+        data.username = document.getElementById('username').value.trim();
+    } else {
+        data.userlist = document.getElementById('userlist').value.trim();
+    }
+    
+    // Gestion mots de passe
+    if (passMode === 'single') {
+        data.password = document.getElementById('password').value;
+    } else {
+        data.passwordlist = document.getElementById('passwordlist').value;
+    }
+    
+    // Confirmer l'attaque
+    if (!confirm(`⚠️ Lancer une attaque par force brute sur ${target} (${service}) ?\n\nAssurez-vous d'avoir l'autorisation !`)) {
+        return;
+    }
+    
+    // Désactiver le formulaire
+    document.getElementById('startBruteButton').disabled = true;
+    document.getElementById('startBruteButton').innerHTML = '🔄 Lancement...';
+    
+    // Lancer la tâche
+    fetch('/huntkit/api/brute-force/start', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentBruteTaskId = data.task_id;
+            showBruteMonitoring();
+            startBruteTaskMonitoring();
+            showNotification('✅ ' + data.message, 'success');
+        } else {
+            showNotification('❌ ' + data.error, 'danger');
+            resetBruteForm();
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        showNotification('❌ Erreur de connexion', 'danger');
+        resetBruteForm();
+    });
+}
+
+function showBruteMonitoring() {
+    document.getElementById('bruteMonitoringCard').style.display = 'block';
+}
+
+function startBruteTaskMonitoring() {
+    if (!currentBruteTaskId) return;
+    
+    updateBruteTaskStatus();
+    bruteMonitoringInterval = setInterval(updateBruteTaskStatus, 5000); // Toutes les 5s
+}
+
+function updateBruteTaskStatus() {
+    if (!currentBruteTaskId) return;
+    
+    fetch(`/tasks/api/${currentBruteTaskId}/status`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success !== false) {
+                updateBruteProgressUI(data);
+                
+                if (data.unified_state === 'SUCCESS' || data.unified_state === 'FAILURE') {
+                    stopBruteTaskMonitoring();
+                    
+                    if (data.unified_state === 'SUCCESS') {
+                        setTimeout(() => {
+                            window.location.href = `/tasks/${currentBruteTaskId}/results`;
+                        }, 2000);
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Erreur monitoring brute:', error);
+        });
+}
+
+function updateBruteProgressUI(data) {
+    const progress = data.unified_progress || data.progress || 0;
+    const status = data.unified_status || data.status || 'En cours...';
+    const state = data.unified_state || data.state || 'PENDING';
+    
+    const progressBar = document.getElementById('bruteProgressBar');
+    progressBar.style.width = `${progress}%`;
+    progressBar.textContent = `${progress}%`;
+    
+    document.getElementById('bruteStatusText').textContent = status;
+    document.getElementById('bruteProgressText').textContent = `${progress}%`;
+    
+    const taskStatus = document.getElementById('bruteTaskStatus');
+    if (state === 'SUCCESS') {
+        taskStatus.textContent = 'Terminé ✅';
+        taskStatus.className = 'badge bg-success';
+        progressBar.className = 'progress-bar bg-success';
+        progressBar.classList.remove('progress-bar-animated');
+    } else if (state === 'FAILURE') {
+        taskStatus.textContent = 'Erreur ❌';
+        taskStatus.className = 'badge bg-danger';
+        progressBar.className = 'progress-bar bg-danger';
+        progressBar.classList.remove('progress-bar-animated');
+    }
+}
+
+function stopBruteTaskMonitoring() {
+    if (bruteMonitoringInterval) {
+        clearInterval(bruteMonitoringInterval);
+        bruteMonitoringInterval = null;
+    }
+}
+
+function resetBruteForm() {
+    document.getElementById('startBruteButton').disabled = false;
+    document.getElementById('startBruteButton').innerHTML = '🔨 Lancer l\'attaque';
+    document.getElementById('bruteMonitoringCard').style.display = 'none';
+    currentBruteTaskId = null;
+}
+
+function viewBruteTaskDetails() {
+    if (currentBruteTaskId) {
+        window.open(`/tasks/${currentBruteTaskId}/status`, '_blank');
+    }
+}
+
+function cancelBruteTask() {
+    if (!currentBruteTaskId) return;
+    
+    if (confirm('⚠️ Êtes-vous sûr de vouloir arrêter cette attaque ?')) {
+        fetch(`/tasks/api/${currentBruteTaskId}/cancel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('✅ Attaque arrêtée', 'info');
+                stopBruteTaskMonitoring();
+                resetBruteForm();
+            } else {
+                showNotification('❌ Impossible d\'arrêter l\'attaque', 'danger');
+            }
+        });
+    }
+}
+
+function showBruteExamples() {
+    alert('Exemples:\n\n🏠 Réseau local:\n- 192.168.1.1 (SSH)\n- 192.168.1.100 (FTP)\n\n🌐 Services publics:\n- example.com (SSH)\n- ftp.example.com (FTP)\n\n⚠️ Uniquement sur vos systèmes !');
+}
+
+window.addEventListener('beforeunload', function() {
+    stopBruteTaskMonitoring();
+});
+</script>
+
+{% endblock %}

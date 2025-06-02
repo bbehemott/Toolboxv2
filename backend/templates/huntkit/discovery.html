@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+{% block title %}Découverte Réseau - HuntKit{% endblock %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2>🌐 Découverte Réseau HuntKit</h2>
+    <p class="text-muted">Découverte d'hôtes actifs et scan de ports avec Nmap</p>
+
+    <!-- Formulaire de lancement -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>🎯 Configuration du scan</h5>
+        </div>
+        <div class="card-body">
+            <form id="discoveryForm">
+                <div class="row">
+                    <div class="col-md-8">
+                        <label for="target" class="form-label">Cible réseau</label>
+                        <input type="text" class="form-control" id="target" name="target" 
+                               placeholder="192.168.1.0/24 ou 192.168.1.1 ou example.com" required>
+                        <div class="form-text">
+                            Formats supportés: IP simple, réseau CIDR, nom d'hôte
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Options avancées</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="aggressive" name="aggressive">
+                            <label class="form-check-label" for="aggressive">
+                                Scan agressif (-A)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="osDetection" name="osDetection">
+                            <label class="form-check-label" for="osDetection">
+                                Détection OS (-O)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <button type="submit" class="btn btn-primary btn-lg" id="startButton">
+                        🚀 Lancer la découverte
+                    </button>
+                    <button type="button" class="btn btn-outline-info" onclick="showExamples()">
+                        💡 Exemples
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Zone d'exemples (masquée par défaut) -->
+    <div class="card mb-4" id="examplesCard" style="display: none;">
+        <div class="card-header">
+            <h6>💡 Exemples de cibles</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <h6>🏠 Réseau local</h6>
+                    <ul class="list-unstyled">
+                        <li><code onclick="fillTarget(this)">192.168.1.0/24</code></li>
+                        <li><code onclick="fillTarget(this)">10.0.0.0/24</code></li>
+                        <li><code onclick="fillTarget(this)">172.16.0.0/24</code></li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <h6>🎯 IP spécifique</h6>
+                    <ul class="list-unstyled">
+                        <li><code onclick="fillTarget(this)">192.168.1.1</code></li>
+                        <li><code onclick="fillTarget(this)">8.8.8.8</code></li>
+                        <li><code onclick="fillTarget(this)">1.1.1.1</code></li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <h6>🌐 Domaines</h6>
+                    <ul class="list-unstyled">
+                        <li><code onclick="fillTarget(this)">example.com</code></li>
+                        <li><code onclick="fillTarget(this)">google.com</code></li>
+                        <li><code onclick="fillTarget(this)">github.com</code></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monitoring en temps réel -->
+    <div class="card" id="monitoringCard" style="display: none;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>📊 Scan en cours</h5>
+            <span class="badge bg-info" id="taskStatus">En cours...</span>
+        </div>
+        <div class="card-body">
+            <!-- Progression -->
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <span id="statusText">Initialisation...</span>
+                    <span id="progressText">0%</span>
+                </div>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" 
+                         id="progressBar" role="progressbar" style="width: 0%">
+                        0%
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary" onclick="viewTaskDetails()" id="detailsBtn">
+                    👁️ Voir détails
+                </button>
+                <button class="btn btn-outline-danger" onclick="cancelTask()" id="cancelBtn">
+                    🛑 Annuler
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Informations sur l'outil -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card border-info">
+                <div class="card-body">
+                    <h6>🔧 Outil utilisé</h6>
+                    <p><strong>Nmap</strong> - Network Mapper</p>
+                    <ul class="mb-0">
+                        <li>Découverte d'hôtes actifs</li>
+                        <li>Scan de ports ouverts</li>
+                        <li>Détection de services</li>
+                        <li>Identification d'OS (optionnel)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-warning">
+                <div class="card-body">
+                    <h6>⏱️ Temps estimé</h6>
+                    <ul class="mb-0">
+                        <li><strong>IP unique:</strong> 1-5 minutes</li>
+                        <li><strong>/28 (16 IPs):</strong> 2-8 minutes</li>
+                        <li><strong>/24 (256 IPs):</strong> 5-30 minutes</li>
+                        <li><strong>Domaine:</strong> 1-3 minutes</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentTaskId = null;
+let monitoringInterval = null;
+
+document.getElementById('discoveryForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    startDiscovery();
+});
+
+function startDiscovery() {
+    const target = document.getElementById('target').value.trim();
+    const aggressive = document.getElementById('aggressive').checked;
+    const osDetection = document.getElementById('osDetection').checked;
+    
+    if (!target) {
+        alert('⚠️ Veuillez spécifier une cible');
+        return;
+    }
+    
+    const options = {
+        aggressive: aggressive,
+        os_detection: osDetection
+    };
+    
+    // Désactiver le formulaire
+    document.getElementById('startButton').disabled = true;
+    document.getElementById('startButton').innerHTML = '🔄 Lancement...';
+    
+    // Lancer la tâche
+    fetch('/huntkit/api/discovery/start', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            target: target,
+            options: options
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentTaskId = data.task_id;
+            showMonitoring();
+            startTaskMonitoring();
+            showNotification('✅ ' + data.message, 'success');
+        } else {
+            showNotification('❌ ' + data.error, 'danger');
+            resetForm();
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        showNotification('❌ Erreur de connexion', 'danger');
+        resetForm();
+    });
+}
+
+function showMonitoring() {
+    document.getElementById('monitoringCard').style.display = 'block';
+    document.getElementById('examplesCard').style.display = 'none';
+}
+
+function startTaskMonitoring() {
+    if (!currentTaskId) return;
+    
+    // Mettre à jour immédiatement
+    updateTaskStatus();
+    
+    // Puis toutes les 3 secondes
+    monitoringInterval = setInterval(updateTaskStatus, 3000);
+}
+
+function updateTaskStatus() {
+    if (!currentTaskId) return;
+    
+    fetch(`/tasks/api/${currentTaskId}/status`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success !== false) {
+                updateProgressUI(data);
+                
+                // Arrêter le monitoring si terminé
+                if (data.unified_state === 'SUCCESS' || data.unified_state === 'FAILURE') {
+                    stopTaskMonitoring();
+                    
+                    if (data.unified_state === 'SUCCESS') {
+                        setTimeout(() => {
+                            window.location.href = `/tasks/${currentTaskId}/results`;
+                        }, 2000);
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Erreur monitoring:', error);
+        });
+}
+
+function updateProgressUI(data) {
+    const progress = data.unified_progress || data.progress || 0;
+    const status = data.unified_status || data.status || 'En cours...';
+    const state = data.unified_state || data.state || 'PENDING';
+    
+    // Mettre à jour la barre de progression
+    const progressBar = document.getElementById('progressBar');
+    progressBar.style.width = `${progress}%`;
+    progressBar.textContent = `${progress}%`;
+    
+    // Mettre à jour le texte de statut
+    document.getElementById('statusText').textContent = status;
+    document.getElementById('progressText').textContent = `${progress}%`;
+    
+    // Mettre à jour le badge de statut
+    const taskStatus = document.getElementById('taskStatus');
+    if (state === 'SUCCESS') {
+        taskStatus.textContent = 'Terminé ✅';
+        taskStatus.className = 'badge bg-success';
+        progressBar.className = 'progress-bar bg-success';
+        progressBar.classList.remove('progress-bar-animated');
+    } else if (state === 'FAILURE') {
+        taskStatus.textContent = 'Erreur ❌';
+        taskStatus.className = 'badge bg-danger';
+        progressBar.className = 'progress-bar bg-danger';
+        progressBar.classList.remove('progress-bar-animated');
+    } else {
+        taskStatus.textContent = 'En cours...';
+        taskStatus.className = 'badge bg-info';
+    }
+}
+
+function stopTaskMonitoring() {
+    if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+    }
+}
+
+function resetForm() {
+    document.getElementById('startButton').disabled = false;
+    document.getElementById('startButton').innerHTML = '🚀 Lancer la découverte';
+    document.getElementById('monitoringCard').style.display = 'none';
+    currentTaskId = null;
+}
+
+function showExamples() {
+    const card = document.getElementById('examplesCard');
+    card.style.display = card.style.display === 'none' ? 'block' : 'none';
+}
+
+function fillTarget(element) {
+    document.getElementById('target').value = element.textContent;
+    document.getElementById('examplesCard').style.display = 'none';
+}
+
+function viewTaskDetails() {
+    if (currentTaskId) {
+        window.open(`/tasks/${currentTaskId}/status`, '_blank');
+    }
+}
+
+function cancelTask() {
+    if (!currentTaskId) return;
+    
+    if (confirm('⚠️ Êtes-vous sûr de vouloir annuler cette tâche ?')) {
+        fetch(`/tasks/api/${currentTaskId}/cancel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('✅ Tâche annulée', 'info');
+                stopTaskMonitoring();
+                resetForm();
+            } else {
+                showNotification('❌ Impossible d\'annuler la tâche', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Erreur annulation:', error);
+            showNotification('❌ Erreur de connexion', 'danger');
+        });
+    }
+}
+
+function showNotification(message, type) {
+    // Utiliser la fonction de base.html si disponible
+    if (typeof window.showNotification === 'function') {
+        window.showNotification(message, type);
+    } else {
+        alert(message);
+    }
+}
+
+// Nettoyer l'interval quand on quitte la page
+window.addEventListener('beforeunload', function() {
+    stopTaskMonitoring();
+});
+</script>
+
+{% endblock %}

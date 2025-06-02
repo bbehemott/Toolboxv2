@@ -38,56 +38,65 @@
 </div>
 
 <!-- Zone d'intégration -->
+<!-- Zone modules HuntKit -->
 <div class="row mb-4">
   <div class="col-md-12">
-    <h4>🔧 Modules à intégrer</h4>
+    <h4>🔧 Modules HuntKit Intégrés</h4>
   </div>
-  <div class="col-md-12">
-    <div class="card border-dashed">
-      <div class="card-body text-center py-5">
-        <h5 class="card-title text-muted">📦 Espace pour vos modules</h5>
-        <p class="card-text text-muted">Cette zone est prête pour l'ajout de vos modules de cybersécurité</p>
-        <div class="mt-4">
-          <h6 class="text-muted">Infrastructure disponible :</h6>
-          <div class="row mt-3">
-            <div class="col-md-3">
-              <div class="card bg-light">
-                <div class="card-body text-center">
-                  <h6>⚡ Celery</h6>
-                  <small>Tâches asynchrones</small>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-3">
-              <div class="card bg-light">
-                <div class="card-body text-center">
-                  <h6>🗄️ Redis</h6>
-                  <small>Cache & Broker</small>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-3">
-              <div class="card bg-light">
-                <div class="card-body text-center">
-                  <h6>📊 Graylog</h6>
-                  <small>Logs centralisés</small>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-3">
-              <div class="card bg-light">
-                <div class="card-body text-center">
-                  <h6>🔐 Auth</h6>
-                  <small>Système d'authentification</small>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+  
+  {% if current_user and current_user.role in ['pentester', 'admin'] %}
+  <div class="col-md-3">
+    <div class="card border-primary h-100">
+      <div class="card-body text-center">
+        <h5 class="card-title">🌐 Découverte</h5>
+        <p class="card-text">Scan réseau avec Nmap</p>
+        <a href="/huntkit/discovery" class="btn btn-primary btn-sm">Lancer</a>
       </div>
     </div>
   </div>
+  <div class="col-md-3">
+    <div class="card border-success h-100">
+      <div class="card-body text-center">
+        <h5 class="card-title">🕷️ Audit Web</h5>
+        <p class="card-text">Nikto + Nuclei + SQLMap</p>
+        <a href="/huntkit/web-audit" class="btn btn-success btn-sm">Lancer</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-warning h-100">
+      <div class="card-body text-center">
+        <h5 class="card-title">🔨 Force Brute</h5>
+        <p class="card-text">Attaques Hydra</p>
+        <a href="/huntkit/brute-force" class="btn btn-warning btn-sm">Lancer</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-danger h-100">
+      <div class="card-body text-center">
+        <h5 class="card-title">🎯 Pentest</h5>
+        <p class="card-text">Chaîne complète</p>
+        <a href="/huntkit/full-pentest" class="btn btn-danger btn-sm">Lancer</a>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-md-12">
+    <div class="alert alert-info">
+      <strong>ℹ️ Modules disponibles</strong><br>
+      Les modules de pentest HuntKit sont disponibles pour les utilisateurs avec le rôle <strong>pentester</strong> ou <strong>admin</strong>.
+    </div>
+  </div>
+  {% endif %}
+  
+  <div class="col-md-12 mt-3">
+    <div class="text-center">
+      <a href="/huntkit/tools-status" class="btn btn-outline-info">🔧 Vérifier statut des outils</a>
+    </div>
+  </div>
 </div>
+
 
 <!-- Activité récente -->
 <div class="row">

@@ -145,6 +145,150 @@ class TaskManager:
             logger.error(f"Erreur récupération statut tâche {task_id}: {e}")
             return None
     
+
+    def start_huntkit_discovery(self, target: str, user_id: int = None, options: Dict = None) -> Optional[str]:
+        """Lance une tâche de découverte réseau HuntKit"""
+        try:
+            task_id = str(uuid.uuid4())
+            
+            # Enregistrer en base
+            self.db.create_task(
+                task_id=task_id,
+                task_name=f'🌐 Découverte → {target}',
+                task_type='huntkit_discovery',
+                target=target,
+                user_id=user_id
+            )
+            
+            # Lancer la tâche Celery
+            from tasks_huntkit import huntkit_network_discovery
+            celery_task = huntkit_network_discovery.apply_async(
+                args=[target, options or {}],
+                task_id=task_id
+            )
+            
+            logger.info(f"Tâche découverte HuntKit lancée: {task_id} pour {target}")
+            return task_id
+            
+        except Exception as e:
+            logger.error(f"Erreur lancement découverte HuntKit: {e}")
+            return None
+
+    def start_huntkit_web_audit(self, target: str, port: int = 80, ssl: bool = False, 
+                               user_id: int = None, options: Dict = None) -> Optional[str]:
+        """Lance une tâche d'audit web HuntKit"""
+        try:
+            task_id = str(uuid.uuid4())
+            
+            # Enregistrer en base
+            self.db.create_task(
+                task_id=task_id,
+                task_name=f'🕷️ Audit Web → {target}:{port}',
+                task_type='huntkit_web_audit',
+                target=f'{target}:{port}',
+                user_id=user_id
+            )
+            
+            # Lancer la tâche Celery
+            from tasks_huntkit import huntkit_web_audit
+            celery_task = huntkit_web_audit.apply_async(
+                args=[target, port, ssl, options or {}],
+                task_id=task_id
+            )
+            
+            logger.info(f"Tâche audit web HuntKit lancée: {task_id} pour {target}:{port}")
+            return task_id
+            
+        except Exception as e:
+            logger.error(f"Erreur lancement audit web HuntKit: {e}")
+            return None
+
+    def start_huntkit_brute_force(self, target: str, service: str, username: str = None,
+                                 userlist: str = None, passwordlist: str = None,
+                                 user_id: int = None, options: Dict = None) -> Optional[str]:
+        """Lance une tâche de force brute HuntKit"""
+        try:
+            task_id = str(uuid.uuid4())
+            
+            # Enregistrer en base
+            self.db.create_task(
+                task_id=task_id,
+                task_name=f'🔨 Force Brute → {target} ({service})',
+                task_type='huntkit_brute_force',
+                target=f'{target}:{service}',
+                user_id=user_id
+            )
+            
+            # Lancer la tâche Celery
+            from tasks_huntkit import huntkit_brute_force
+            celery_task = huntkit_brute_force.apply_async(
+                args=[target, service, username, userlist, passwordlist, options or {}],
+                task_id=task_id
+            )
+            
+            logger.info(f"Tâche force brute HuntKit lancée: {task_id} pour {target}:{service}")
+            return task_id
+            
+        except Exception as e:
+            logger.error(f"Erreur lancement force brute HuntKit: {e}")
+            return None
+
+    def start_huntkit_full_pentest(self, target: str, user_id: int = None, options: Dict = None) -> Optional[str]:
+        """Lance un pentest complet HuntKit"""
+        try:
+            task_id = str(uuid.uuid4())
+            
+            # Enregistrer en base
+            self.db.create_task(
+                task_id=task_id,
+                task_name=f'🎯 Pentest Complet → {target}',
+                task_type='huntkit_full_pentest',
+                target=target,
+                user_id=user_id
+            )
+            
+            # Lancer la tâche Celery
+            from tasks_huntkit import huntkit_full_pentest
+            celery_task = huntkit_full_pentest.apply_async(
+                args=[target, options or {}],
+                task_id=task_id
+            )
+            
+            logger.info(f"Tâche pentest complet HuntKit lancée: {task_id} pour {target}")
+            return task_id
+            
+        except Exception as e:
+            logger.error(f"Erreur lancement pentest complet HuntKit: {e}")
+            return None
+
+    def start_tools_verification(self, user_id: int = None) -> Optional[str]:
+        """Lance une vérification des outils HuntKit"""
+        try:
+            task_id = str(uuid.uuid4())
+            
+            # Enregistrer en base
+            self.db.create_task(
+                task_id=task_id,
+                task_name='🔧 Vérification Outils HuntKit',
+                task_type='huntkit_tools_check',
+                target='localhost',
+                user_id=user_id
+            )
+            
+            # Lancer la tâche Celery
+            from tasks_huntkit import huntkit_tools_verification
+            celery_task = huntkit_tools_verification.apply_async(
+                task_id=task_id
+            )
+            
+            logger.info(f"Tâche vérification outils HuntKit lancée: {task_id}")
+            return task_id
+            
+        except Exception as e:
+            logger.error(f"Erreur lancement vérification outils HuntKit: {e}")
+            return None
+
+
     def cancel_task(self, task_id: str) -> bool:
         """Annule une tâche"""
         try:
@@ -242,3 +386,5 @@ class TaskManager:
                 'database': {},
                 'combined': {'total_active': 0, 'total_completed': 0, 'total_failed': 0}
             }
+
+

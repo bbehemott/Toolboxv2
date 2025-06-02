@@ -3,7 +3,7 @@ import logging
 from flask import Flask
 from logging.handlers import RotatingFileHandler
 from pygelf import GelfUdpHandler
-
+from api.huntkit import huntkit_bp
 from config import config
 from database import DatabaseManager
 from auth import AuthManager
@@ -101,6 +101,10 @@ def register_blueprints(app):
     # API tâches (préfixe /tasks pour compatibilité templates) 
     from api.tasks import tasks_bp
     app.register_blueprint(tasks_bp, url_prefix='/tasks')
+    
+    # ===== NOUVEAU : API HuntKit =====
+    from api.huntkit import huntkit_bp
+    app.register_blueprint(huntkit_bp, url_prefix='/huntkit')
 
 
 def register_error_handlers(app):

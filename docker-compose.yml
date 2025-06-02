@@ -1,9 +1,11 @@
 version: '3.8'
 
 services:
-  # Application Flask
+  # Application Flask avec HuntKit intégré
   app:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile  # Utilise le nouveau Dockerfile HuntKit allégé
     command: python backend/app.py
     ports:
       - "5000:5000"
@@ -15,12 +17,15 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - GRAYLOG_HOST=graylog
       - GRAYLOG_PORT=12201
-      # Variables PostgreSQL ajoutées
+      # Variables PostgreSQL
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=toolbox
       - DB_USER=toolbox_user
       - DB_PASSWORD=toolbox_password
+      # Variables pour outils HuntKit
+      - TOOLS_DIR=/opt
+      - WORDLISTS_DIR=/usr/share/wordlists
     depends_on:
       - redis
       - postgres
@@ -29,24 +34,31 @@ services:
       - toolbox-network
     volumes:
       - .:/app
-    container_name: toolbox-app
+      - tools_data:/opt  # Volume pour conserver les données des outils
+      - wordlists_data:/usr/share/wordlists  # Volume pour les wordlists
+    container_name: toolbox-app-huntkit
 
-  # Worker Celery
+  # Worker Celery avec accès aux outils HuntKit
   worker:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile  # Même image que l'app
     working_dir: /app/backend
-    command: celery -A celery_app worker --loglevel=info
+    command: celery -A celery_app worker --loglevel=info --concurrency=2
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - GRAYLOG_HOST=graylog
       - GRAYLOG_PORT=12201
-      # Variables PostgreSQL ajoutées pour le worker
+      # Variables PostgreSQL pour le worker
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=toolbox
       - DB_USER=toolbox_user
       - DB_PASSWORD=toolbox_password
+      # Variables pour outils HuntKit
+      - TOOLS_DIR=/opt
+      - WORDLISTS_DIR=/usr/share/wordlists
     depends_on:
       - redis
       - postgres
@@ -55,16 +67,20 @@ services:
       - toolbox-network
     volumes:
       - .:/app
+      - tools_data:/opt
+      - wordlists_data:/usr/share/wordlists
     logging:
       driver: gelf
       options:
         gelf-address: "udp://localhost:12201"
-        tag: "toolbox-worker"
-    container_name: toolbox-worker
+        tag: "toolbox-worker-huntkit"
+    container_name: toolbox-worker-huntkit
 
-  # Flower (monitoring Celery)
+  # Flower (monitoring Celery) - inchangé
   flower:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     working_dir: /app/backend
     command: celery -A celery_app flower --port=5555
     ports:
@@ -81,7 +97,7 @@ services:
       - .:/app
     container_name: toolbox-flower
 
-  # Redis (broker Celery)
+  # Redis (broker Celery) - inchangé
   redis:
     image: redis:7-alpine
     ports:
@@ -90,7 +106,7 @@ services:
       - toolbox-network
     container_name: toolbox-redis
 
-  # PostgreSQL
+  # PostgreSQL - inchangé
   postgres:
     image: postgres:15-alpine
     environment:
@@ -106,14 +122,14 @@ services:
       - toolbox-network
     container_name: toolbox-postgres
 
-  # MongoDB pour Graylog
+  # MongoDB pour Graylog - inchangé
   mongo:
     image: mongo:5.0
     networks:
       - toolbox-network
     container_name: toolbox-mongo
 
-  # Elasticsearch pour Graylog
+  # Elasticsearch pour Graylog - inchangé
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch-oss:7.10.2
     environment:
@@ -131,7 +147,7 @@ services:
       - toolbox-network
     container_name: toolbox-elasticsearch
 
-  # Graylog pour centralisation des logs
+  # Graylog pour centralisation des logs - inchangé
   graylog:
     image: graylog/graylog:4.3
     environment:
@@ -155,7 +171,7 @@ services:
       - "12201:12201/udp" # GELF UDP
     container_name: toolbox-graylog
 
-  # DVWA (Damn Vulnerable Web Application) pour tests
+  # DVWA (Damn Vulnerable Web Application) pour tests - inchangé
   dvwa:
     image: vulnerables/web-dvwa
     ports:
@@ -164,9 +180,30 @@ services:
       - toolbox-network
     container_name: toolbox-dvwa
 
+  # NOUVEAU : Conteneur pour tests d'outils (optionnel)
+  tools-test:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    command: /bin/bash -c "while true; do sleep 3600; done"  # Keep alive
+    networks:
+      - toolbox-network
+    volumes:
+      - .:/app
+      - tools_data:/opt
+      - wordlists_data:/usr/share/wordlists
+    container_name: toolbox-tools-test
+    profiles:
+      - testing  # Démarré seulement avec --profile testing
+
 networks:
   toolbox-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16  # Réseau pour les tests
 
 volumes:
   postgres_data:
+  tools_data:      # NOUVEAU : Volume pour les outils
+  wordlists_data:  # NOUVEAU : Volume pour les wordlists

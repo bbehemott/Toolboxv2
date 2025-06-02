@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+{% block title %}Statut des Outils - HuntKit{% endblock %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2>🔧 Statut des Outils HuntKit</h2>
+    <p class="text-muted">Vérification de la disponibilité des outils de pentest</p>
+
+    <!-- Bouton de vérification -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>🔍 Vérification</h5>
+        </div>
+        <div class="card-body">
+            <button class="btn btn-primary btn-lg" onclick="checkToolsStatus()" id="checkButton">
+                🔧 Vérifier les outils
+            </button>
+            <button class="btn btn-outline-info" onclick="refreshPage()">
+                🔄 Actualiser la page
+            </button>
+            <button class="btn btn-outline-secondary" onclick="showToolsInfo()">
+                ℹ️ Informations sur les outils
+            </button>
+        </div>
+    </div>
+
+    <!-- Résultats de vérification -->
+    <div class="card" id="toolsStatusCard" style="display: none;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>📊 Résultats de vérification</h5>
+            <span class="badge bg-info" id="verificationStatus">En cours...</span>
+        </div>
+        <div class="card-body">
+            <div id="toolsResults">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Vérification en cours...</span>
+                    </div>
+                    <p class="mt-2">Vérification des outils en cours...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Informations sur les outils -->
+    <div class="card" id="toolsInfoCard" style="display: none;">
+        <div class="card-header">
+            <h6>ℹ️ Informations sur les outils HuntKit</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card border-primary">
+                        <div class="card-header bg-primary text-white">
+                            <h6 class="mb-0">🌐 Nmap</h6>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Fonction :</strong> Découverte réseau</p>
+                            <ul class="small">
+                                <li>Scan d'hôtes actifs</li>
+                                <li>Scan de ports</li>
+                                <li>Détection de services</li>
+                                <li>Identification d'OS</li>
+                            </ul>
+                            <p><strong>Version attendue :</strong> 7.80+</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-warning">
+                        <div class="card-header bg-warning text-dark">
+                            <h6 class="mb-0">🔨 Hydra</h6>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Fonction :</strong> Force brute</p>
+                            <ul class="small">
+                                <li>Attaques par dictionnaire</li>
+                                <li>Multiple protocoles</li>
+                                <li>SSH, FTP, HTTP, etc.</li>
+                                <li>Multi-threading</li>
+                            </ul>
+                            <p><strong>Version attendue :</strong> 9.0+</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-success">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0">🕷️ Nikto</h6>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Fonction :</strong> Scan web</p>
+                            <ul class="small">
+                                <li>Vulnérabilités web</li>
+                                <li>Fichiers dangereux</li>
+                                <li>Configurations incorrectes</li>
+                                <li>Versions obsolètes</li>
+                            </ul>
+                            <p><strong>Version attendue :</strong> 2.5+</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-md-4">
+                    <div class="card border-info">
+                        <div class="card-header bg-info text-white">
+                            <h6 class="mb-0">🎯 Nuclei</h6>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Fonction :</strong> Détection automatisée</p>
+                            <ul class="small">
+                                <li>Templates de vulnérabilités</li>
+                                <li>CVE récents</li>
+                                <li>Misconfigurations</li>
+                                <li>Mise à jour continue</li>
+                            </ul>
+                            <p><strong>Version attendue :</strong> 3.0+</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-danger">
+                        <div class="card-header bg-danger text-white">
+                            <h6 class="mb-0">💉 SQLMap</h6>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Fonction :</strong> Injection SQL</p>
+                            <ul class="small">
+                                <li>Détection automatique</li>
+                                <li>Exploitation</li>
+                                <li>Extraction de données</li>
+                                <li>Techniques avancées</li>
+                            </ul>
+                            <p><strong>Version attendue :</strong> 1.7+</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-dark">
+                        <div class="card-header bg-dark text-white">
+                            <h6 class="mb-0">🎪 Metasploit</h6>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Fonction :</strong> Framework d'exploitation</p>
+                            <ul class="small">
+                                <li>Exploits</li>
+                                <li>Payloads</li>
+                                <li>Post-exploitation</li>
+                                <li>Base de données de vulnérabilités</li>
+                            </ul>
+                            <p><strong>Version attendue :</strong> 6.0+</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wordlists disponibles -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card border-secondary">
+                <div class="card-header">
+                    <h6>📚 Wordlists disponibles</h6>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            rockyou.txt
+                            <span class="badge bg-primary rounded-pill">~14M mots</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            top1000-passwords.txt
+                            <span class="badge bg-success rounded-pill">1K mots</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            common.txt
+                            <span class="badge bg-info rounded-pill">Répertoires</span>
+                        </li>
+                    </ul>
+                    <div class="mt-3">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="checkWordlists()">
+                            📚 Vérifier wordlists
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-secondary">
+                <div class="card-header">
+                    <h6>🐳 Informations conteneur</h6>
+                </div>
+                <div class="card-body">
+                    <p><strong>Image :</strong> HuntKit intégré</p>
+                    <p><strong>Outils installés :</strong> 6 outils principaux</p>
+                    <p><strong>Répertoire outils :</strong> /opt</p>
+                    <p><strong>Répertoire wordlists :</strong> /usr/share/wordlists</p>
+                    <div class="mt-3">
+                        <button class="btn btn-outline-info btn-sm" onclick="showContainerInfo()">
+                            🐳 Infos détaillées
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentCheckTaskId = null;
+
+function checkToolsStatus() {
+    document.getElementById('checkButton').disabled = true;
+    document.getElementById('checkButton').innerHTML = '🔄 Vérification...';
+    
+    // Afficher la carte de résultats
+    document.getElementById('toolsStatusCard').style.display = 'block';
+    document.getElementById('verificationStatus').textContent = 'En cours...';
+    document.getElementById('verificationStatus').className = 'badge bg-info';
+    
+    // Lancer la vérification
+    fetch('/huntkit/api/tools/status', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentCheckTaskId = data.task_id;
+            monitorToolsCheck();
+        } else {
+            showError('Erreur lors du lancement de la vérification: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        showError('Erreur de connexion');
+    });
+}
+
+function monitorToolsCheck() {
+    if (!currentCheckTaskId) return;
+    
+    const checkInterval = setInterval(() => {
+        fetch(`/tasks/api/${currentCheckTaskId}/status`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success !== false) {
+                    if (data.unified_state === 'SUCCESS') {
+                        clearInterval(checkInterval);
+                        displayToolsResults(data.result);
+                        resetCheckButton();
+                    } else if (data.unified_state === 'FAILURE') {
+                        clearInterval(checkInterval);
+                        showError('Erreur lors de la vérification: ' + (data.error || 'Erreur inconnue'));
+                        resetCheckButton();
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Erreur monitoring:', error);
+                clearInterval(checkInterval);
+                showError('Erreur de monitoring');
+                resetCheckButton();
+            });
+    }, 2000);
+}
+
+function displayToolsResults(result) {
+    document.getElementById('verificationStatus').textContent = 'Terminé ✅';
+    document.getElementById('verificationStatus').className = 'badge bg-success';
+    
+    const toolsStatus = result.tools_status;
+    const toolsAvailable = toolsStatus.tools_available;
+    
+    let html = '<div class="row">';
+    
+    const tools = [
+        { name: 'nmap', title: 'Nmap', icon: '🌐', color: 'primary' },
+        { name: 'hydra', title: 'Hydra', icon: '🔨', color: 'warning' },
+        { name: 'nikto', title: 'Nikto', icon: '🕷️', color: 'success' },
+        { name: 'nuclei', title: 'Nuclei', icon: '🎯', color: 'info' },
+        { name: 'sqlmap', title: 'SQLMap', icon: '💉', color: 'danger' },
+        { name: 'msfconsole', title: 'Metasploit', icon: '🎪', color: 'dark' }
+    ];
+    
+    tools.forEach(tool => {
+        const isAvailable = toolsAvailable[tool.name] || false;
+        const statusClass = isAvailable ? 'success' : 'danger';
+        const statusIcon = isAvailable ? '✅' : '❌';
+        const statusText = isAvailable ? 'Disponible' : 'Non disponible';
+        
+        html += `
+            <div class="col-md-4 mb-3">
+                <div class="card border-${statusClass}">
+                    <div class="card-body">
+                        <h6>${tool.icon} ${tool.title}</h6>
+                        <span class="badge bg-${statusClass}">${statusIcon} ${statusText}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    // Résumé
+    const availableCount = Object.values(toolsAvailable).filter(Boolean).length;
+    const totalCount = Object.keys(toolsAvailable).length;
+    
+    html += `
+        <div class="alert alert-${availableCount === totalCount ? 'success' : 'warning'} mt-3">
+            <h6>📊 Résumé</h6>
+            <p class="mb-0"><strong>${availableCount}/${totalCount}</strong> outils disponibles</p>
+            ${availableCount === totalCount ? 
+                '<p class="mb-0">✅ Tous les outils sont prêts pour les tests de pénétration !</p>' :
+                '<p class="mb-0">⚠️ Certains outils ne sont pas disponibles. Vérifiez l\'installation.'
+            }
+        </div>
+    `;
+    
+    document.getElementById('toolsResults').innerHTML = html;
+}
+
+function showError(message) {
+    document.getElementById('verificationStatus').textContent = 'Erreur ❌';
+    document.getElementById('verificationStatus').className = 'badge bg-danger';
+    
+    document.getElementById('toolsResults').innerHTML = `
+        <div class="alert alert-danger">
+            <h6>❌ Erreur</h6>
+            <p class="mb-0">${message}</p>
+        </div>
+    `;
+}
+
+function resetCheckButton() {
+    document.getElementById('checkButton').disabled = false;
+    document.getElementById('checkButton').innerHTML = '🔧 Vérifier les outils';
+}
+
+function refreshPage() {
+    window.location.reload();
+}
+
+function showToolsInfo() {
+    const card = document.getElementById('toolsInfoCard');
+    card.style.display = card.style.display === 'none' ? 'block' : 'none';
+}
+
+function checkWordlists() {
+    fetch('/huntkit/api/wordlists')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                let message = 'Wordlists disponibles:\n\n';
+                data.wordlists.forEach(wl => {
+                    message += `${wl.available ? '✅' : '❌'} ${wl.name}`;
+                    if (wl.size_human) message += ` (${wl.size_human})`;
+                    message += '\n';
+                });
+                alert(message);
+            } else {
+                alert('❌ Erreur lors de la vérification des wordlists');
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            alert('❌ Erreur de connexion');
+        });
+}
+
+function showContainerInfo() {
+    fetch('/huntkit/api/info')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const info = data.info;
+                let message = `🐳 Informations conteneur HuntKit\n\n`;
+                message += `📦 Version: ${info.version}\n`;
+                message += `🔧 Outils: ${info.tools_included.length} intégrés\n`;
+                message += `📚 Wordlists: ${info.wordlists_available.length} disponibles\n`;
+                message += `🎯 Cibles supportées: ${info.supported_targets.length} formats\n`;
+                alert(message);
+            } else {
+                alert('❌ Erreur lors de la récupération des informations');
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            alert('❌ Erreur de connexion');
+        });
+}
+</script>
+
+{% endblock %})
