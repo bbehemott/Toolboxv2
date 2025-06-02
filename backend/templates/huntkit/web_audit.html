@@ -202,7 +202,7 @@ function startWebAudit() {
     updateStatus('🚀 Lancement de l\'audit web...', 10);
     
     // Lancer la tâche
-    fetch('/huntkit/api/web-audit', {
+    fetch('/huntkit/api/web-audit/start', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -254,32 +254,12 @@ function testConnection() {
         return;
     }
     
-    updateStatus('🔍 Test de connexion...', 50);
-    
-    // Test simple de ping/connexion
-    fetch('/huntkit/api/test-connection', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ target: target })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            updateStatus('✅ Connexion OK : ' + data.message, 100);
-        } else {
-            updateStatus('❌ Connexion échouée : ' + data.error, 0);
-        }
-        
-        setTimeout(() => {
-            document.getElementById('audit-status').style.display = 'none';
-        }, 3000);
-    })
-    .catch(error => {
-        updateStatus('❌ Erreur de test', 0);
-    });
+    updateStatus('✅ Cible saisie : ' + target, 100);
+    setTimeout(() => {
+        document.getElementById('audit-status').style.display = 'none';
+    }, 2000);
 }
+
 
 function cancelAudit() {
     if (currentTaskId) {

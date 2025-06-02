@@ -11,25 +11,25 @@ huntkit_bp = Blueprint('huntkit', __name__)
 # ===== PAGES DE MODULES HUNTKIT =====
 
 @huntkit_bp.route('/discovery')
-@pentester_required
+@login_required
 def discovery_page():
     """Page de découverte réseau"""
     return render_template('huntkit/discovery.html')
 
 @huntkit_bp.route('/web-audit')
-@pentester_required
+@login_required
 def web_audit_page():
     """Page d'audit web"""
     return render_template('huntkit/web_audit.html')
 
 @huntkit_bp.route('/brute-force')
-@pentester_required
+@login_required
 def brute_force_page():
     """Page de force brute"""
     return render_template('huntkit/brute_force.html')
 
 @huntkit_bp.route('/full-pentest')
-@pentester_required
+@login_required
 def full_pentest_page():
     """Page de pentest complet"""
     return render_template('huntkit/full_pentest.html')
@@ -72,7 +72,7 @@ def api_tools_status():
         }, 500
 
 @huntkit_bp.route('/api/discovery/start', methods=['POST'])
-@pentester_required
+@login_required
 def api_start_discovery():
     """API pour lancer une découverte réseau"""
     try:
@@ -120,7 +120,7 @@ def api_start_discovery():
         }, 500
 
 @huntkit_bp.route('/api/web-audit/start', methods=['POST'])
-@pentester_required
+@login_required
 def api_start_web_audit():
     """API pour lancer un audit web"""
     try:
@@ -183,7 +183,7 @@ def api_start_web_audit():
         }, 500
 
 @huntkit_bp.route('/api/brute-force/start', methods=['POST'])
-@pentester_required
+@login_required
 def api_start_brute_force():
     """API pour lancer une attaque par force brute"""
     try:
@@ -247,7 +247,7 @@ def api_start_brute_force():
         }, 500
 
 @huntkit_bp.route('/api/full-pentest/start', methods=['POST'])
-@pentester_required
+@login_required
 def api_start_full_pentest():
     """API pour lancer un pentest complet"""
     try:

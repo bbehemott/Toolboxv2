@@ -109,6 +109,12 @@ def api_task_status(task_id):
             'state': 'ERROR'
         }, 500
 
+@tasks_bp.route('/status/<task_id>')
+@login_required
+def task_status_page(task_id):
+    """Page de monitoring d'une tâche"""
+    return render_template('tasks/status.html', task_id=task_id)
+
 
 @tasks_bp.route('/api/<task_id>/results')
 @login_required  
