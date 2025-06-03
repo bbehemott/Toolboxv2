@@ -1,9 +1,9 @@
-# Backend requirements avec PostgreSQL
+# Backend requirements avec PostgreSQL uniquement
 Flask==2.3.3
 Flask-Session==0.5.0
 Werkzeug==2.3.7
 
-# PostgreSQL
+# PostgreSQL uniquement - Pas de SQLite
 psycopg2-binary==2.9.7
 
 # Celery et Redis

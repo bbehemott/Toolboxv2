@@ -14,12 +14,11 @@ logger = logging.getLogger(__name__)
 
 # ===== ACCÈS À LA BASE DE DONNÉES =====
 def get_db_manager():
-    """Accès au gestionnaire de base de données PostgreSQL"""
+    """Accès au gestionnaire de base de données PostgreSQL uniquement"""
     try:
         import sys
         import os
         
-        # Ajouter le chemin backend si nécessaire
         backend_path = os.path.join(os.path.dirname(__file__))
         if backend_path not in sys.path:
             sys.path.insert(0, backend_path)
@@ -30,7 +29,7 @@ def get_db_manager():
         config_obj = config.get('development', config['default'])
         return DatabaseManager(config_obj.DATABASE_URL)
     except Exception as e:
-        logger.error(f"❌ Erreur accès BDD dans Celery: {e}")
+        logger.error(f"❌ Erreur accès PostgreSQL dans Celery: {e}")
         return None
 
 # ===== UTILITAIRES COMMUNES =====

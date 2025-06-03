@@ -2,24 +2,24 @@ import os
 from pathlib import Path
 
 class Config:
-    """Configuration de base"""
+    """Configuration PostgreSQL uniquement"""
     
     # Répertoires
     BASE_DIR = Path(__file__).parent
     LOGS_DIR = BASE_DIR / 'logs'
     
     # Flask
-    SECRET_KEY = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-key-change-in-production')
     DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     
-    # PostgreSQL Database
-    DB_HOST = os.getenv('DB_HOST', 'db')
+    # PostgreSQL UNIQUEMENT - Pas de SQLite
+    DB_HOST = os.getenv('DB_HOST', 'postgres')
     DB_PORT = os.getenv('DB_PORT', '5432')
     DB_NAME = os.getenv('DB_NAME', 'toolbox')
     DB_USER = os.getenv('DB_USER', 'toolbox_user')
-    DB_PASSWORD = os.getenv('DB_PASSWORD', 'toolbox_pass')
+    DB_PASSWORD = os.getenv('DB_PASSWORD', 'toolbox_password')
     
-    # Database URL
+    # URL PostgreSQL
     DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
     # Celery
@@ -27,8 +27,8 @@ class Config:
     CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
     
     # Timeouts
-    DEFAULT_SCAN_TIMEOUT = 3600  # 1 heure
-    DEFAULT_NMAP_TIMEOUT = 300   # 5 minutes
+    DEFAULT_SCAN_TIMEOUT = 3600
+    DEFAULT_NMAP_TIMEOUT = 300
     
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
@@ -38,7 +38,7 @@ class Config:
     # Sécurité
     BCRYPT_ROUNDS = 12
     SESSION_PERMANENT = False
-    SESSION_COOKIE_SECURE = False  # True en production avec HTTPS
+    SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_HTTPONLY = True
     
     @classmethod
@@ -48,30 +48,42 @@ class Config:
         
     @classmethod
     def validate_config(cls):
-        """Valide la configuration"""
+        """Valide la configuration PostgreSQL"""
         required_env = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']
         
         missing = [var for var in required_env if not os.getenv(var)]
         if missing:
             raise ValueError(f"Variables d'environnement manquantes: {missing}")
         
+        # Test de connexion PostgreSQL
+        try:
+            import psycopg2
+            test_url = f"postgresql://{cls.DB_USER}:{cls.DB_PASSWORD}@{cls.DB_HOST}:{cls.DB_PORT}/{cls.DB_NAME}"
+            conn = psycopg2.connect(test_url)
+            conn.close()
+            print("✅ Configuration PostgreSQL validée")
+        except Exception as e:
+            raise ValueError(f"❌ Impossible de se connecter à PostgreSQL: {e}")
+        
         return True
 
 class DevelopmentConfig(Config):
-    """Configuration de développement"""
+    """Configuration de développement PostgreSQL"""
     DEBUG = True
     
 class ProductionConfig(Config):
-    """Configuration de production"""
+    """Configuration de production PostgreSQL"""
     DEBUG = False
     SESSION_COOKIE_SECURE = True
+    # Utiliser une base séparée en production
+    DB_NAME = os.getenv('DB_NAME', 'toolbox_prod')
 
 class TestingConfig(Config):
-    """Configuration de test"""
+    """Configuration de test PostgreSQL"""
     TESTING = True
-    DB_NAME = 'toolbox_test'
+    DB_NAME = os.getenv('DB_NAME', 'toolbox_test')
 
-# Configuration par défaut
+# Configuration par défaut - PostgreSQL uniquement
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
