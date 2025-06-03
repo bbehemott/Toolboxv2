@@ -7,18 +7,30 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def make_celery():
-    """Créer et configurer l'instance Celery"""
+    """Créer et configurer l'instance Celery - VERSION SÉCURISÉE"""
     
     # URLs Redis depuis les variables d'environnement
     broker_url = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
     result_backend = os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
     
-    # Créer l'instance Celery avec TOUS les modules de tâches
+    # ✅ CORRECTION : Import sécurisé des modules
+    available_modules = ['tasks']  # Module de base toujours présent
+    
+    # Tenter d'importer le module HuntKit
+    try:
+        import tasks_huntkit
+        available_modules.append('tasks_huntkit')
+        logger.info("✅ Module HuntKit détecté et ajouté")
+    except ImportError as e:
+        logger.warning(f"⚠️ Module HuntKit non disponible: {e}")
+        logger.info("📋 Démarrage en mode de base (sans HuntKit)")
+    
+    # Créer l'instance Celery avec les modules disponibles
     celery = Celery(
         'toolbox',
         broker=broker_url,
         backend=result_backend,
-        include=['tasks', 'tasks_huntkit']  # ✅ Inclure les tâches HuntKit
+        include=available_modules  # ✅ Seulement les modules qui existent
     )
     
     # Configuration Celery
@@ -53,17 +65,10 @@ def make_celery():
         # ===== CELERY 6.0+ COMPATIBILITY =====
         broker_connection_retry_on_startup=True,  # ✅ Fix warning Celery 6.0+
         
-        # ===== ROUTES DES TÂCHES =====
+        # ===== ROUTES DES TÂCHES DYNAMIQUES =====
         task_routes={
-            # Tâches originales
+            # Tâches de base
             'tasks.test_task': {'queue': 'default'},
-            
-            # Tâches HuntKit
-            'tasks.huntkit_discovery': {'queue': 'discovery'},
-            'tasks.huntkit_web_audit': {'queue': 'discovery'},
-            'tasks.huntkit_brute_force': {'queue': 'discovery'},
-            'tasks.huntkit_full_pentest': {'queue': 'discovery'},
-            'tasks.huntkit_tools_check': {'queue': 'default'},
         },
         
         # ===== CONFIGURATION DES QUEUES =====
@@ -80,22 +85,40 @@ def make_celery():
         }
     )
     
+    # ✅ Ajouter routes HuntKit si disponible
+    if 'tasks_huntkit' in available_modules:
+        huntkit_routes = {
+            'tasks.huntkit_discovery': {'queue': 'discovery'},
+            'tasks.huntkit_web_audit': {'queue': 'discovery'},
+            'tasks.huntkit_brute_force': {'queue': 'discovery'},
+            'tasks.huntkit_full_pentest': {'queue': 'discovery'},
+            'tasks.huntkit_tools_check': {'queue': 'default'},
+        }
+        celery.conf.task_routes.update(huntkit_routes)
+        logger.info("🎯 Routes HuntKit configurées")
+    
     logger.info(f"✅ Celery configuré - Broker: {broker_url}")
-    logger.info("📋 Modules importés: tasks, tasks_huntkit")
+    logger.info(f"📋 Modules chargés: {', '.join(available_modules)}")
     return celery
 
 # Créer l'instance globale
 celery_app = make_celery()
 
-# ===== AUTO-DÉCOUVERTE DES TÂCHES =====
-# S'assurer que toutes les tâches sont découvertes
+# ===== AUTO-DÉCOUVERTE DES TÂCHES SÉCURISÉE =====
 try:
-    # Importer explicitement les modules de tâches
+    # Importer explicitement le module de base
     import tasks
-    import tasks_huntkit
-    logger.info("✅ Modules de tâches importés avec succès")
+    logger.info("✅ Module tasks importé")
+    
+    # Tenter d'importer HuntKit
+    try:
+        import tasks_huntkit
+        logger.info("✅ Module tasks_huntkit importé")
+    except ImportError:
+        logger.info("📋 Module tasks_huntkit non disponible - mode dégradé")
+        
 except ImportError as e:
-    logger.warning(f"⚠️ Erreur import tâches: {e}")
+    logger.error(f"❌ Erreur critique import modules: {e}")
 
 if __name__ == '__main__':
     celery_app.start()
