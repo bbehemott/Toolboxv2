@@ -403,8 +403,8 @@ class SQLMapWrapper:
         
         # 🔥 CORRECTION: Paramètres plus agressifs pour DVWA
         command.extend([
-            '--level=5',           # Niveau maximum
-            '--risk=3',            # Risque maximum
+            '--level=1',           # Niveau maximum
+            '--risk=1',            # Risque maximum
             '--timeout=5',         
             '--retries=1',         
             '--technique=BEUSTQ',  # Toutes les techniques
