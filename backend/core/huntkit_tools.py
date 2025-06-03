@@ -166,7 +166,7 @@ class HydraWrapper:
     def brute_force(self, target: str, service: str, username: str = None, 
                    userlist: str = None, password: str = None, 
                    passwordlist: str = None, timeout: int = 1800) -> Dict[str, Any]:
-        """Attaque par force brute"""
+        """Attaque par force brute - VERSION CORRIGÉE POUR HTTP"""
         
         command = ['hydra']
         
@@ -191,44 +191,151 @@ class HydraWrapper:
             else:
                 command.extend(['-p', 'password'])  # Fallback
         
-        # Cible et service
-        command.extend([target, service])
+        # ✅ CORRECTION PRINCIPALE : Gestion spécifique des services HTTP
+        if service == 'http-post-form':
+            # Configuration spécifique pour DVWA ou formulaires web
+            if '172.20.0.8' in target or '8080' in str(target):
+                # DVWA spécifique
+                form_params = "/login.php:username=^USER^&password=^PASS^:Login failed"
+                command.extend([target, 'http-post-form', form_params])
+            elif 'login' in target.lower() or 'dvwa' in target.lower():
+                # Autres applications web avec login
+                form_params = "/login.php:username=^USER^&password=^PASS^:incorrect"
+                command.extend([f'{target}', 'http-post-form', form_params])
+            else:
+                # Configuration générique pour formulaire web
+                form_params = "/login:username=^USER^&password=^PASS^:failed"
+                command.extend([f'{target}', 'http-post-form', form_params])
+        
+        elif service == 'http-get':
+            # HTTP Basic Auth
+            command.extend([target, 'http-get', '/'])
+        
+        else:
+            # Services standards (SSH, FTP, etc.)
+            command.extend([target, service])
         
         # Options additionnelles
         command.extend(['-t', '4', '-f'])  # 4 threads, arrêt à la première trouvaille
         
+        # ✅ AMÉLIORATION : Log de la commande pour debug
+        logger.info(f"🔨 Commande Hydra: {' '.join(command)}")
+        
         result = self.tools._run_command(command, timeout)
+        
+        # ✅ AMÉLIORATION : Log du résultat pour debug
+        if not result['success']:
+            logger.error(f"❌ Hydra stderr: {result['stderr']}")
+            logger.error(f"❌ Hydra stdout: {result['stdout']}")
         
         if result['success']:
             result['parsed'] = self._parse_hydra_output(result['stdout'])
         
         return result
-    
+
+    def detect_login_form(self, target: str) -> str:
+        """Détecte automatiquement la configuration du formulaire de login"""
+        try:
+            import requests
+            
+            # Essayer de récupérer la page de login
+            if not target.startswith('http'):
+                test_urls = [
+                    f"http://{target}/login.php",
+                    f"http://{target}/login",
+                    f"http://{target}/admin",
+                    f"http://{target}"
+                ]
+            else:
+                test_urls = [target]
+            
+            for url in test_urls:
+                try:
+                    response = requests.get(url, timeout=5)
+                    if response.status_code == 200:
+                        content = response.text.lower()
+                        
+                        # Détecter DVWA
+                        if 'dvwa' in content or 'damn vulnerable' in content:
+                            return "/login.php:username=^USER^&password=^PASS^&Login=Login:Login failed"
+                        
+                        # Détecter d'autres formulaires
+                        if 'password' in content and 'username' in content:
+                            return "/login:username=^USER^&password=^PASS^:incorrect"
+                            
+                except:
+                    continue
+            
+            # Fallback générique
+            return "/login:username=^USER^&password=^PASS^:failed"
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de détecter le formulaire: {e}")
+            return "/login:username=^USER^&password=^PASS^:failed"
+
     def _parse_hydra_output(self, output: str) -> Dict[str, Any]:
-        """Parse la sortie de Hydra"""
+        """Parse la sortie de Hydra - VERSION AMÉLIORÉE"""
         found_credentials = []
         lines = output.split('\n')
         
         for line in lines:
-            if '[' in line and '] login:' in line and 'password:' in line:
-                # Format: [service][port] host: login: password:
+            line = line.strip()
+            
+            # Format classique: [service][port] host: login: password:
+            if '[' in line and '] ' in line and 'login:' in line and 'password:' in line:
                 try:
-                    parts = line.split('] ')[1]  # Après le premier ]
+                    # Extraire après le premier '] '
+                    parts = line.split('] ', 1)[1]
+                    
                     if 'login:' in parts and 'password:' in parts:
+                        # Split sur 'login:' puis 'password:'
                         login_part = parts.split('login:')[1].split('password:')[0].strip()
                         password_part = parts.split('password:')[1].strip()
                         
                         found_credentials.append({
                             'login': login_part,
-                            'password': password_part
+                            'password': password_part,
+                            'service': self._extract_service_from_line(line)
                         })
-                except:
+                        
+                except Exception as e:
+                    logger.debug(f"Erreur parsing ligne Hydra: {line} - {e}")
                     continue
+            
+            # Format alternatif pour HTTP
+            elif 'valid password found' in line.lower():
+                # Format: "login: admin password: password"
+                if 'login:' in line and 'password:' in line:
+                    try:
+                        import re
+                        login_match = re.search(r'login:\s*(\S+)', line)
+                        password_match = re.search(r'password:\s*(\S+)', line)
+                        
+                        if login_match and password_match:
+                            found_credentials.append({
+                                'login': login_match.group(1),
+                                'password': password_match.group(1),
+                                'service': 'http'
+                            })
+                    except:
+                        continue
         
         return {
             'credentials_found': found_credentials,
-            'total_found': len(found_credentials)
+            'total_found': len(found_credentials),
+            'raw_output': output
         }
+
+    def _extract_service_from_line(self, line: str) -> str:
+        """Extrait le service de la ligne de résultat Hydra"""
+        if '[http-post-form]' in line:
+            return 'http-post-form'
+        elif '[ssh]' in line:
+            return 'ssh'
+        elif '[ftp]' in line:
+            return 'ftp'
+        else:
+            return 'unknown'
 
 
 class NiktoWrapper:
@@ -515,7 +622,7 @@ class HuntKitIntegration:
         port_results = []
         discovered_hosts = ping_result.get('parsed', {}).get('hosts_found', [])
         
-        for host in discovered_hosts[:5]:  # Limiter à 5 hôtes max
+        for host in discovered_hosts[:10]:  # Limiter à 10 hôtes max
             host_target = host['host']
             
             # ✅ FIX: Extraire seulement l'IP du nom d'hôte complexe
