@@ -1,400 +1,289 @@
-#!/bin/bash
-
-echo "🚀 DÉPLOIEMENT INTÉGRATION METASPLOIT - BACKEND ONLY"
-echo "======================================================="
-
-# Couleurs pour l'affichage
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Variables
-PROJECT_DIR=$(pwd)
-BACKEND_DIR="$PROJECT_DIR/backend"
-
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Fonction pour vérifier si un service est en cours d'exécution
-check_service() {
-    local service_name=$1
-    local port=$2
-    
-    if nc -z localhost $port 2>/dev/null; then
-        print_success "$service_name est accessible sur le port $port"
-        return 0
-    else
-        print_error "$service_name n'est pas accessible sur le port $port"
-        return 1
-    fi
-}
-
-# Étape 1: Vérifications préliminaires
-print_status "Étape 1: Vérifications préliminaires..."
-
-# Vérifier Docker
-if ! command -v docker &> /dev/null; then
-    print_error "Docker n'est pas installé"
-    exit 1
-fi
-
-# Vérifier Docker Compose
-if ! command -v docker-compose &> /dev/null; then
-    print_error "Docker Compose n'est pas installé"
-    exit 1
-fi
-
-# Vérifier la structure du projet
-if [[ ! -f "docker-compose.yml" ]]; then
-    print_error "docker-compose.yml non trouvé"
-    exit 1
-fi
-
-if [[ ! -d "$BACKEND_DIR" ]]; then
-    print_error "Répertoire backend/ non trouvé"
-    exit 1
-fi
-
-print_success "Vérifications préliminaires OK"
-
-# Étape 2: Backup des fichiers existants
-print_status "Étape 2: Backup des fichiers modifiés..."
-
-mkdir -p backups/$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
-
-# Backup des fichiers principaux
-cp Dockerfile "$BACKUP_DIR/" 2>/dev/null
-cp "$BACKEND_DIR/core/huntkit_tools.py" "$BACKUP_DIR/" 2>/dev/null
-cp "$BACKEND_DIR/tasks_huntkit.py" "$BACKUP_DIR/" 2>/dev/null
-cp "$BACKEND_DIR/services/task_manager.py" "$BACKUP_DIR/" 2>/dev/null
-cp "$BACKEND_DIR/celery_app.py" "$BACKUP_DIR/" 2>/dev/null
-
-print_success "Backup créé dans $BACKUP_DIR"
-
-# Étape 3: Application des modifications
-print_status "Étape 3: Application des modifications Metasploit..."
-
-# Ici, normalement, on copierait les nouveaux fichiers
-# Pour cette démonstration, on suppose qu'ils sont déjà en place
-print_warning "Les fichiers suivants doivent être mis à jour manuellement:"
-echo "  - Dockerfile (avec installation Metasploit)"
-echo "  - backend/core/huntkit_tools.py (avec MetasploitWrapper)"
-echo "  - backend/tasks_huntkit.py (avec tâches Metasploit)"
-echo "  - backend/services/task_manager.py (avec méthodes Metasploit)"
-echo "  - backend/celery_app.py (avec routes Metasploit)"
-
-# Étape 4: Rebuild des conteneurs
-print_status "Étape 4: Rebuild des conteneurs Docker..."
-
-# Arrêter les conteneurs existants
-print_status "Arrêt des conteneurs existants..."
-docker-compose down
-
-# Rebuild avec Metasploit (cache désactivé)
-print_status "Rebuild de l'image avec Metasploit (cela peut prendre 10-15 minutes)..."
-docker-compose build --no-cache
-
-if [[ $? -ne 0 ]]; then
-    print_error "Échec du build Docker"
-    exit 1
-fi
-
-print_success "Build Docker terminé avec succès"
-
-# Étape 5: Démarrage des services
-print_status "Étape 5: Démarrage des services..."
-
-# Démarrer les services de base
-print_status "Démarrage des services de base..."
-docker-compose up -d postgres redis mongo elasticsearch
-
-# Attendre que PostgreSQL soit prêt
-print_status "Attente de PostgreSQL..."
-for i in {1..30}; do
-    if check_service "PostgreSQL" 5432; then
-        break
-    fi
-    sleep 2
-done
-
-# Attendre que Redis soit prêt
-print_status "Attente de Redis..."
-for i in {1..30}; do
-    if check_service "Redis" 6379; then
-        break
-    fi
-    sleep 2
-done
-
-# Démarrer Graylog
-print_status "Démarrage de Graylog..."
-docker-compose up -d graylog
-
-# Démarrer l'application principale
-print_status "Démarrage de l'application principale..."
-docker-compose up -d app worker flower
-
-print_success "Tous les services démarrés"
-
-# Étape 6: Validation de l'intégration
-print_status "Étape 6: Validation de l'intégration Metasploit..."
-
-# Attendre que l'application soit prête
-sleep 10
-
-# Vérifier les services
-print_status "Vérification des services..."
-check_service "Application Flask" 5000
-check_service "Flower (Celery)" 5555
-check_service "Graylog" 9000
-
-# Test de validation Python dans le conteneur
-print_status "Exécution du script de validation dans le conteneur..."
-
-# Créer le script de validation dans le conteneur
-docker-compose exec -T app python -c "
-import sys
-sys.path.insert(0, '/app/backend')
-
-try:
-    from core.huntkit_tools import HuntKitIntegration, MetasploitWrapper
-    print('✅ Import HuntKit + Metasploit: OK')
-    
-    huntkit = HuntKitIntegration()
-    print('✅ Initialisation HuntKit: OK')
-    
-    msf_test = huntkit.metasploit.test_metasploit_availability()
-    if msf_test.get('available'):
-        print(f'✅ Metasploit disponible: {msf_test.get(\"version\", \"Unknown\")}')
-    else:
-        print(f'❌ Metasploit non disponible: {msf_test.get(\"error\", \"Unknown\")}')
-        
-    tools_status = huntkit.get_tool_status()
-    tools = tools_status['tools_available']
-    print(f'✅ Outils disponibles: Nmap={tools.get(\"nmap\")}, Metasploit={tools.get(\"msfconsole\")}')
-    
-except Exception as e:
-    print(f'❌ Erreur validation: {e}')
-    sys.exit(1)
-"
-
-if [[ $? -eq 0 ]]; then
-    print_success "Validation dans le conteneur réussie"
-else
-    print_error "Validation dans le conteneur échouée"
-fi
-
-# Test des tâches Celery
-print_status "Test des tâches Celery Metasploit..."
-
-docker-compose exec -T app python -c "
-import sys
-sys.path.insert(0, '/app/backend')
-
-try:
-    from celery_app import celery_app
-    
-    # Lister les tâches disponibles
-    tasks = list(celery_app.tasks.keys())
-    metasploit_tasks = [t for t in tasks if 'metasploit' in t or 'exploitation' in t]
-    
-    print(f'✅ Total tâches Celery: {len(tasks)}')
-    print(f'✅ Tâches Metasploit: {len(metasploit_tasks)}')
-    
-    for task in metasploit_tasks:
-        print(f'   - {task}')
-        
-    if len(metasploit_tasks) >= 3:
-        print('✅ Intégration Celery Metasploit: OK')
-    else:
-        print('⚠️ Intégration Celery Metasploit: Partielle')
-        
-except Exception as e:
-    print(f'❌ Erreur test Celery: {e}')
-"
-
-# Étape 7: Test fonctionnel complet
-print_status "Étape 7: Test fonctionnel complet..."
-
-# Copier le script de validation dans le conteneur
-docker-compose exec -T app bash -c "cat > /tmp/metasploit_validation.py" << 'EOF'
 #!/usr/bin/env python3
+"""
+Script de validation technique - Intégration Metasploit Backend
+Version corrigée et simplifiée
+Usage: python metasploit_validation_fixed.py
+"""
+
 import sys
 import os
-sys.path.insert(0, '/app/backend')
-
-from core.huntkit_tools import HuntKitIntegration
 import time
+import json
+import subprocess
+from datetime import datetime
 
-print("🧪 TEST FONCTIONNEL METASPLOIT")
-print("=" * 40)
+# Ajouter le chemin backend
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-try:
-    huntkit = HuntKitIntegration()
+def test_metasploit_integration():
+    """Test complet de l'intégration Metasploit"""
     
-    # Test 1: Disponibilité
-    print("\n1. Test disponibilité...")
-    msf_test = huntkit.metasploit.test_metasploit_availability()
-    if msf_test['available']:
-        print(f"✅ Metasploit disponible: {msf_test.get('version', 'Unknown')}")
+    print("🧪 VALIDATION METASPLOIT - VERSION CORRIGÉE")
+    print("=" * 50)
+    
+    results = {
+        'timestamp': datetime.now().isoformat(),
+        'tests': {},
+        'success_count': 0,
+        'total_tests': 0
+    }
+    
+    def run_test(test_name, test_func):
+        """Exécute un test et enregistre le résultat"""
+        results['total_tests'] += 1
+        print(f"\n📋 Test {results['total_tests']}: {test_name}...")
+        
+        try:
+            result = test_func()
+            if result.get('success', False):
+                results['success_count'] += 1
+                print("✅ SUCCÈS")
+            else:
+                print(f"❌ ÉCHEC: {result.get('error', 'Erreur inconnue')}")
+            
+            results['tests'][test_name.lower().replace(' ', '_')] = result
+            return result
+            
+        except Exception as e:
+            print(f"❌ EXCEPTION: {e}")
+            results['tests'][test_name.lower().replace(' ', '_')] = {
+                'success': False,
+                'error': str(e)
+            }
+            return {'success': False, 'error': str(e)}
+    
+    # Test 1: Imports Python
+    def test_imports():
+        try:
+            from core.huntkit_tools import HuntKitIntegration, MetasploitWrapper
+            return {'success': True, 'message': 'Imports réussis'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    # Test 2: Initialisation HuntKit
+    def test_huntkit_init():
+        try:
+            from core.huntkit_tools import HuntKitIntegration
+            huntkit = HuntKitIntegration()
+            has_metasploit = hasattr(huntkit, 'metasploit')
+            return {
+                'success': has_metasploit,
+                'message': f'HuntKit initialisé, wrapper Metasploit: {has_metasploit}'
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    # Test 3: Détection Metasploit
+    def test_metasploit_detection():
+        try:
+            from core.huntkit_tools import HuntKitIntegration
+            huntkit = HuntKitIntegration()
+            msf_test = huntkit.metasploit.test_metasploit_availability()
+            
+            return {
+                'success': msf_test.get('available', False),
+                'path': msf_test.get('path'),
+                'version': msf_test.get('version'),
+                'installation_type': msf_test.get('installation_type'),
+                'error': msf_test.get('error') if not msf_test.get('available') else None
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    # Test 4: Statut des outils
+    def test_tools_status():
+        try:
+            from core.huntkit_tools import HuntKitIntegration
+            huntkit = HuntKitIntegration()
+            tools_status = huntkit.get_tool_status()
+            
+            tools_available = tools_status.get('tools_available', {})
+            metasploit_available = tools_available.get('msfconsole', False)
+            
+            return {
+                'success': metasploit_available,
+                'tools_count': len(tools_available),
+                'metasploit_available': metasploit_available,
+                'tools_available': tools_available
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    # Test 5: Recherche d'exploits
+    def test_exploit_search():
+        try:
+            from core.huntkit_tools import HuntKitIntegration
+            huntkit = HuntKitIntegration()
+            
+            search_result = huntkit.metasploit.search_exploits(service='ssh')
+            
+            if search_result.get('success'):
+                exploits_count = len(search_result.get('exploits_found', []))
+                return {
+                    'success': True,
+                    'exploits_found': exploits_count,
+                    'search_query': search_result.get('search_query'),
+                    'sample_exploits': search_result.get('exploits_found', [])[:3]
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': search_result.get('error', 'Recherche échouée')
+                }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    # Test 6: Module auxiliaire
+    def test_auxiliary_module():
+        try:
+            from core.huntkit_tools import HuntKitIntegration
+            huntkit = HuntKitIntegration()
+            
+            aux_result = huntkit.metasploit.run_auxiliary_scan(
+                target='127.0.0.1',
+                port=22,
+                service='ssh',
+                options={'THREADS': '1', 'TIMEOUT': '5'}
+            )
+            
+            return {
+                'success': aux_result.get('success', False),
+                'module': aux_result.get('module'),
+                'scan_completed': aux_result.get('parsed_result', {}).get('scan_completed', False),
+                'error': aux_result.get('error') if not aux_result.get('success') else None
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    # Test 7: Tâches Celery
+    def test_celery_tasks():
+        try:
+            from celery_app import celery_app
+            
+            all_tasks = list(celery_app.tasks.keys())
+            metasploit_tasks = [task for task in all_tasks if 'metasploit' in task or 'exploitation' in task]
+            
+            return {
+                'success': len(metasploit_tasks) > 0,
+                'total_tasks': len(all_tasks),
+                'metasploit_tasks_count': len(metasploit_tasks),
+                'metasploit_tasks': metasploit_tasks
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    # Test 8: Database
+    def test_database():
+        try:
+            from database import DatabaseManager
+            from config import config
+            
+            config_obj = config.get('development', config['default'])
+            db = DatabaseManager(config_obj.DATABASE_URL)
+            
+            # Test de sauvegarde
+            fake_task_id = f"test_metasploit_{int(time.time())}"
+            
+            db.save_module_result(
+                task_id=fake_task_id,
+                module_name='metasploit_validation_test',
+                target='127.0.0.1:22',
+                scan_type='validation',
+                result_data={
+                    'test': True,
+                    'validation_time': datetime.now().isoformat()
+                },
+                scan_duration=1,
+                stats={'test_stat': 1}
+            )
+            
+            return {
+                'success': True,
+                'test_task_id': fake_task_id,
+                'message': 'Sauvegarde test réussie'
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    # Exécution des tests
+    run_test("Imports Python", test_imports)
+    run_test("Initialisation HuntKit", test_huntkit_init)
+    run_test("Détection Metasploit", test_metasploit_detection)
+    run_test("Statut des outils", test_tools_status)
+    run_test("Recherche d'exploits", test_exploit_search)
+    run_test("Module auxiliaire", test_auxiliary_module)
+    run_test("Tâches Celery", test_celery_tasks)
+    run_test("Base de données", test_database)
+    
+    # Résumé final
+    print("\n" + "=" * 50)
+    print("📊 RÉSUMÉ DE LA VALIDATION")
+    print("=" * 50)
+    
+    success_rate = (results['success_count'] / results['total_tests']) * 100
+    
+    print(f"Tests exécutés: {results['total_tests']}")
+    print(f"Tests réussis: {results['success_count']}")
+    print(f"Tests échoués: {results['total_tests'] - results['success_count']}")
+    print(f"Taux de réussite: {success_rate:.1f}%")
+    
+    # Informations spécifiques
+    metasploit_test = results['tests'].get('détection_metasploit', {})
+    if metasploit_test.get('success'):
+        print(f"\n🎯 METASPLOIT DÉTECTÉ:")
+        print(f"   - Chemin: {metasploit_test.get('path', 'N/A')}")
+        print(f"   - Version: {metasploit_test.get('version', 'N/A')}")
+        print(f"   - Type: {metasploit_test.get('installation_type', 'N/A')}")
+    
+    # Tâches Celery
+    celery_test = results['tests'].get('tâches_celery', {})
+    if celery_test.get('success'):
+        print(f"\n⚡ TÂCHES CELERY:")
+        print(f"   - Total: {celery_test.get('total_tasks', 0)}")
+        print(f"   - Metasploit: {celery_test.get('metasploit_tasks_count', 0)}")
+        for task in celery_test.get('metasploit_tasks', []):
+            print(f"     • {task}")
+    
+    # Recommandations
+    print(f"\n💡 STATUT:")
+    if success_rate == 100:
+        print("✅ INTÉGRATION PARFAITE - Metasploit opérationnel !")
+        print("   → Vous pouvez procéder au développement frontend")
+    elif success_rate >= 80:
+        print("⚠️ INTÉGRATION FONCTIONNELLE - Quelques ajustements possibles")
+        print("   → Le cœur du système fonctionne")
     else:
-        print(f"❌ Metasploit indisponible: {msf_test.get('error', 'Unknown')}")
+        print("❌ INTÉGRATION INCOMPLÈTE - Corrections nécessaires")
+        print("   → Vérifier les erreurs ci-dessus")
+    
+    # Sauvegarde du rapport
+    try:
+        report_filename = f"metasploit_validation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(report_filename, 'w') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
+        print(f"\n📄 Rapport sauvegardé: {report_filename}")
+    except Exception as e:
+        print(f"\n⚠️ Impossible de sauvegarder le rapport: {e}")
+    
+    return results
+
+if __name__ == "__main__":
+    try:
+        results = test_metasploit_integration()
+        
+        # Code de sortie selon le résultat
+        success_rate = (results['success_count'] / results['total_tests']) * 100
+        
+        if success_rate == 100:
+            sys.exit(0)  # Succès complet
+        elif success_rate >= 80:
+            sys.exit(1)  # Succès partiel
+        else:
+            sys.exit(2)  # Échec
+            
+    except KeyboardInterrupt:
+        print("\n\n⚠️ Validation interrompue par l'utilisateur")
+        sys.exit(130)
+    except Exception as e:
+        print(f"\n\n❌ Erreur critique lors de la validation: {e}")
         sys.exit(1)
-    
-    # Test 2: Recherche d'exploits
-    print("\n2. Test recherche exploits...")
-    search_result = huntkit.metasploit.search_exploits(service='ssh')
-    if search_result['success']:
-        count = len(search_result.get('exploits_found', []))
-        print(f"✅ Recherche OK: {count} exploits SSH trouvés")
-    else:
-        print(f"❌ Recherche échec: {search_result.get('error', 'Unknown')}")
-    
-    # Test 3: Module auxiliaire sécurisé
-    print("\n3. Test module auxiliaire...")
-    aux_result = huntkit.metasploit.run_auxiliary_scan(
-        target='127.0.0.1',
-        port=22,
-        service='ssh',
-        options={'THREADS': '1'}
-    )
-    if aux_result['success']:
-        print("✅ Module auxiliaire exécuté avec succès")
-    else:
-        print(f"❌ Module auxiliaire échec: {aux_result.get('error', 'Unknown')}")
-    
-    print("\n✅ TOUS LES TESTS FONCTIONNELS RÉUSSIS")
-    
-except Exception as e:
-    print(f"\n❌ ERREUR CRITIQUE: {e}")
-    sys.exit(1)
-EOF
-
-# Exécuter le test fonctionnel
-docker-compose exec -T app python /tmp/metasploit_validation.py
-
-if [[ $? -eq 0 ]]; then
-    print_success "Test fonctionnel complet réussi"
-else
-    print_error "Test fonctionnel échoué"
-fi
-
-# Étape 8: Informations finales
-print_status "Étape 8: Informations finales..."
-
-echo
-echo "🎯 INTÉGRATION METASPLOIT TERMINÉE"
-echo "=================================="
-echo
-echo "📊 Services disponibles:"
-echo "  - Application Flask: http://localhost:5000"
-echo "  - Flower (Celery): http://localhost:5555"
-echo "  - Graylog (Logs): http://localhost:9000"
-echo "  - DVWA (Test): http://localhost:8080"
-echo
-echo "🔧 Outils intégrés:"
-echo "  - Nmap (découverte réseau)"
-echo "  - Hydra (force brute)"
-echo "  - Nikto (scan web)"
-echo "  - Nuclei (détection vulnérabilités)"
-echo "  - SQLMap (injection SQL)"
-echo "  - Metasploit Framework (exploitation) ⭐ NOUVEAU"
-echo
-echo "⚡ Nouvelles tâches Celery:"
-echo "  - tasks.exploitation (exploitation Metasploit)"
-echo "  - tasks.metasploit_search (recherche exploits)"
-echo "  - tasks.metasploit_test (test framework)"
-echo
-echo "📋 Prochaines étapes:"
-echo "  1. Tester manuellement les tâches via Flower"
-echo "  2. Vérifier les logs dans Graylog"
-echo "  3. Développer l'interface frontend (phase suivante)"
-echo "  4. Intégrer l'API RPC Metasploit (phase suivante)"
-echo
-
-# Tests manuels recommandés
-echo "🧪 TESTS MANUELS RECOMMANDÉS:"
-echo "============================="
-echo
-echo "1. Test via Flower:"
-echo "   - Aller sur http://localhost:5555"
-echo "   - Onglet 'Tasks' > 'Execute Task'"
-echo "   - Tester: tasks_huntkit.metasploit_test_framework"
-echo
-echo "2. Test via conteneur:"
-echo "   docker-compose exec app python -c \""
-echo "   import sys; sys.path.insert(0, '/app/backend')"
-echo "   from services.task_manager import TaskManager"
-echo "   from database import DatabaseManager"
-echo "   from config import config"
-echo "   db = DatabaseManager(config['development'].DATABASE_URL)"
-echo "   tm = TaskManager(db)"
-echo "   task_id = tm.start_metasploit_test()"
-echo "   print(f'Task lancée: {task_id}')"
-echo "   \""
-echo
-echo "3. Vérification logs:"
-echo "   docker-compose logs -f app worker"
-echo
-
-# Commandes utiles
-echo "📋 COMMANDES UTILES:"
-echo "==================="
-echo
-echo "# Redémarrer les services"
-echo "docker-compose restart app worker"
-echo
-echo "# Voir les logs en temps réel"
-echo "docker-compose logs -f app worker"
-echo
-echo "# Accéder au conteneur pour debug"
-echo "docker-compose exec app bash"
-echo
-echo "# Tester Metasploit directement"
-echo "docker-compose exec app msfconsole -v"
-echo
-echo "# Arrêter tous les services"
-echo "docker-compose down"
-echo
-
-# Vérification finale des conteneurs
-print_status "État final des conteneurs:"
-docker-compose ps
-
-# Message de fin
-echo
-if check_service "Application Flask" 5000 && check_service "Flower (Celery)" 5555; then
-    print_success "🎉 DÉPLOIEMENT METASPLOIT RÉUSSI !"
-    print_success "Le backend est opérationnel avec Metasploit intégré"
-    echo
-    echo "Vous pouvez maintenant:"
-    echo "✅ Tester les tâches d'exploitation via Flower"
-    echo "✅ Développer l'interface frontend"
-    echo "✅ Procéder aux tests de pénétration"
-    exit 0
-else
-    print_error "❌ DÉPLOIEMENT INCOMPLET"
-    print_error "Certains services ne sont pas accessibles"
-    echo
-    echo "Actions recommandées:"
-    echo "1. Vérifier les logs: docker-compose logs app worker"
-    echo "2. Redémarrer: docker-compose restart"
-    echo "3. Rebuild si nécessaire: docker-compose build --no-cache"
-    exit 1
-fi
