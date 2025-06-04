@@ -200,9 +200,10 @@ networks:
   toolbox-network:
     driver: bridge
     ipam:
+      driver: default
       config:
-        - subnet: 172.20.0.0/16  # Réseau pour les tests
-
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
 volumes:
   postgres_data:
   tools_data:      # NOUVEAU : Volume pour les outils

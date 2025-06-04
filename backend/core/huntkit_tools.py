@@ -300,7 +300,7 @@ class HydraWrapper:
         # ✅ CORRECTION PRINCIPALE : Gestion spécifique des services HTTP
         if service == 'http-post-form':
             # Configuration spécifique pour DVWA ou formulaires web
-            if '172.20.0.8' in target or '8080' in str(target):
+            if '172.20.0.' in target or '8080' in str(target):
                 # DVWA spécifique
                 form_params = "/login.php:username=^USER^&password=^PASS^:Login failed"
                 command.extend([target, 'http-post-form', form_params])
