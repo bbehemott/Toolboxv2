@@ -1,0 +1,61 @@
+{
+  "timestamp": "2025-06-04T22:06:01.253005",
+  "tests": {
+    "imports_python": {
+      "success": true,
+      "message": "Imports réussis"
+    },
+    "initialisation_huntkit": {
+      "success": true,
+      "message": "HuntKit initialisé, wrapper Metasploit: True"
+    },
+    "détection_metasploit": {
+      "success": false,
+      "path": "/usr/bin/msfconsole",
+      "version": null,
+      "installation_type": null,
+      "error": "[Errno 2] No such file or directory: '/usr/bin/msfconsole'"
+    },
+    "statut_des_outils": {
+      "success": false,
+      "tools_count": 8,
+      "metasploit_available": false,
+      "tools_available": {
+        "nmap": false,
+        "hydra": false,
+        "nikto": false,
+        "nuclei": false,
+        "sqlmap": false,
+        "msfconsole": false,
+        "msfrun": false,
+        "metasploit_detailed": {
+          "available": false,
+          "error": "[Errno 2] No such file or directory: '/usr/bin/msfconsole'",
+          "path": "/usr/bin/msfconsole"
+        }
+      }
+    },
+    "recherche_d'exploits": {
+      "success": true,
+      "exploits_found": 0,
+      "search_query": "type:exploit ssh",
+      "sample_exploits": []
+    },
+    "module_auxiliaire": {
+      "success": true,
+      "module": "auxiliary/scanner/ssh/ssh_login",
+      "scan_completed": true,
+      "error": null
+    },
+    "tâches_celery": {
+      "success": false,
+      "error": "No module named 'celery'"
+    },
+    "base_de_données": {
+      "success": false,
+      "error": "No module named 'psycopg2'"
+    }
+  },
+  "success_count": 4,
+  "total_tests": 8
+}

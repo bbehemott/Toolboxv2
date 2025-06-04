@@ -237,7 +237,7 @@ def huntkit_brute_force(self, target: str, service: str, username: str = None,
         logger.error(f"❌ Erreur force brute HuntKit: {e}")
         return create_error_result(str(e), f"{target}:{service}")
 
-@celery_app.task(bind=True, name='tasks.exploitation')
+@celery_app.task(bind=True, name='tasks_huntkit.metasploit_exploitation')
 @pentest_task_wrapper
 def metasploit_exploitation(self, target: str, port: int = None, service: str = None,
                            exploit_module: str = None, options: Dict = None):
@@ -353,7 +353,7 @@ def metasploit_exploitation(self, target: str, port: int = None, service: str = 
         return create_error_result(str(e), f"{target}:{port or 'N/A'}")
 
 
-@celery_app.task(bind=True, name='tasks.metasploit_search')
+@celery_app.task(bind=True, name='tasks_huntkit.metasploit_search_exploits') 
 @pentest_task_wrapper
 def metasploit_search_exploits(self, service: str = None, platform: str = None, cve: str = None):
     """Recherche d'exploits dans la base Metasploit"""
@@ -417,7 +417,7 @@ def metasploit_search_exploits(self, service: str = None, platform: str = None, 
         return create_error_result(str(e), "Metasploit Database")
 
 
-@celery_app.task(bind=True, name='tasks.metasploit_test')
+@celery_app.task(bind=True, name='tasks_huntkit.metasploit_test_framework')
 @pentest_task_wrapper  
 def metasploit_test_framework(self):
     """Test complet du framework Metasploit"""
