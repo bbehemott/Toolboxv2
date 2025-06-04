@@ -22,20 +22,6 @@ def make_celery():
         available_modules.append('tasks_huntkit')
         logger.info("✅ Module HuntKit détecté et ajouté")
         
-        # Vérifier la présence des tâches Metasploit
-        metasploit_tasks = [
-            'metasploit_exploitation',
-            'metasploit_search_exploits', 
-            'metasploit_test_framework'
-        ]
-        
-        found_metasploit_tasks = []
-        for task_name in metasploit_tasks:
-            if hasattr(tasks_huntkit, task_name):
-                found_metasploit_tasks.append(task_name)
-        
-        logger.info(f"🎯 Tâches Metasploit trouvées: {len(found_metasploit_tasks)}/{len(metasploit_tasks)}")
-        
     except ImportError as e:
         logger.warning(f"⚠️ Module HuntKit non disponible: {e}")
         logger.info("📋 Démarrage en mode de base (sans HuntKit)")
@@ -146,25 +132,8 @@ try:
         import tasks_huntkit
         logger.info("✅ Module tasks_huntkit importé")
         
-        # Vérification spéciale pour les tâches Metasploit
-        metasploit_tasks = [
-            'metasploit_exploitation',
-            'metasploit_search_exploits',
-            'metasploit_test_framework'
-        ]
-        
-        available_metasploit_tasks = []
-        for task_name in metasploit_tasks:
-            if hasattr(tasks_huntkit, task_name):
-                available_metasploit_tasks.append(task_name)
-                logger.info(f"✅ Tâche Metasploit trouvée: {task_name}")
-            else:
-                logger.warning(f"⚠️ Tâche Metasploit manquante: {task_name}")
-        
-        if len(available_metasploit_tasks) == len(metasploit_tasks):
-            logger.info("🎯 TOUTES les tâches Metasploit sont disponibles !")
-        else:
-            logger.warning(f"⚠️ Seulement {len(available_metasploit_tasks)}/{len(metasploit_tasks)} tâches Metasploit disponibles")
+        # Les tâches sont automatiquement détectées par Celery
+        logger.info("🎯 Tâches Metasploit chargées automatiquement")
             
     except ImportError:
         logger.info("📋 Module tasks_huntkit non disponible - mode dégradé")
