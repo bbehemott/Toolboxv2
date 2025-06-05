@@ -28,6 +28,12 @@ def brute_force_page():
     """Page de force brute"""
     return render_template('huntkit/brute_force.html')
 
+@huntkit_bp.route('/exploit')
+@login_required
+def exploit_page():
+    """Page d'exploitation Metasploit"""
+    return render_template('huntkit/exploit.html')
+
 @huntkit_bp.route('/full-pentest')
 @login_required
 def full_pentest_page():
@@ -245,6 +251,298 @@ def api_start_brute_force():
             'success': False,
             'error': str(e)
         }, 500
+
+
+@huntkit_bp.route('/api/metasploit/search/start', methods=['POST'])
+@login_required
+def api_start_metasploit_search():
+    """API pour lancer une recherche d'exploits Metasploit"""
+    try:
+        data = request.get_json()
+        
+        # Paramètres de recherche
+        query = data.get('query', '').strip()
+        service = data.get('service', '').strip()
+        platform = data.get('platform', '').strip()
+        cve = data.get('cve', '').strip()
+        exploits_only = data.get('exploits_only', True)
+        auxiliary_only = data.get('auxiliary_only', False)
+        
+        # Validation : au moins un critère requis
+        if not any([query, service, platform, cve]):
+            return {
+                'success': False,
+                'error': 'Au moins un critère de recherche est requis'
+            }, 400
+        
+        # Lancer la tâche de recherche
+        task_manager = TaskManager(current_app.db)
+        task_id = task_manager.start_metasploit_search(
+            service=service if service else None,
+            platform=platform if platform else None,
+            cve=cve if cve else None,
+            user_id=session.get('user_id')
+        )
+        
+        if task_id:
+            return {
+                'success': True,
+                'task_id': task_id,
+                'message': f'Recherche d\'exploits lancée'
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Impossible de lancer la recherche'
+            }, 500
+            
+    except Exception as e:
+        logger.error(f"Erreur API recherche Metasploit: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
+@huntkit_bp.route('/api/metasploit/exploitation/start', methods=['POST'])
+@login_required
+def api_start_metasploit_exploitation():
+    """API pour lancer une exploitation Metasploit"""
+    try:
+        data = request.get_json()
+        target = data.get('target', '').strip()
+        port = data.get('port')
+        service = data.get('service', '').strip()
+        exploit_module = data.get('exploit_module', '').strip()
+        options = data.get('options', {})
+        
+        if not target:
+            return {
+                'success': False,
+                'error': 'Cible requise'
+            }, 400
+        
+        # Validation du port
+        if port is not None:
+            try:
+                port = int(port)
+                if port < 1 or port > 65535:
+                    raise ValueError()
+            except (ValueError, TypeError):
+                return {
+                    'success': False,
+                    'error': 'Port invalide (1-65535)'
+                }, 400
+        
+        # Mode de sécurité
+        mode = options.get('mode', 'safe')
+        if mode not in ['safe', 'test', 'exploit']:
+            return {
+                'success': False,
+                'error': 'Mode invalide (safe, test, exploit)'
+            }, 400
+        
+        # Confirmation supplémentaire pour le mode exploitation
+        if mode == 'exploit':
+            logger.warning(f"Mode exploitation activé par {session.get('username')} sur {target}:{port}")
+        
+        # Lancer la tâche d'exploitation
+        task_manager = TaskManager(current_app.db)
+        task_id = task_manager.start_metasploit_exploitation(
+            target=target,
+            port=port,
+            service=service if service else None,
+            exploit_module=exploit_module if exploit_module else None,
+            options=options,
+            user_id=session.get('user_id')
+        )
+        
+        if task_id:
+            return {
+                'success': True,
+                'task_id': task_id,
+                'message': f'Exploitation Metasploit lancée sur {target}:{port or "auto"}'
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Impossible de lancer l\'exploitation'
+            }, 500
+            
+    except Exception as e:
+        logger.error(f"Erreur API exploitation Metasploit: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
+@huntkit_bp.route('/api/metasploit/test/start', methods=['POST'])
+@login_required
+def api_start_metasploit_test():
+    """API pour lancer un test du framework Metasploit"""
+    try:
+        # Lancer la tâche de test
+        task_manager = TaskManager(current_app.db)
+        task_id = task_manager.start_metasploit_test(
+            user_id=session.get('user_id')
+        )
+        
+        if task_id:
+            return {
+                'success': True,
+                'task_id': task_id,
+                'message': 'Test du framework Metasploit lancé'
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Impossible de lancer le test Metasploit'
+            }, 500
+            
+    except Exception as e:
+        logger.error(f"Erreur API test Metasploit: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
+@huntkit_bp.route('/api/metasploit/info')
+@login_required
+def api_metasploit_info():
+    """Informations sur l'intégration Metasploit"""
+    try:
+        from core.huntkit_tools import HuntKitIntegration
+        huntkit = HuntKitIntegration()
+        
+        # Récupérer les informations Metasploit
+        msf_info = huntkit.metasploit.test_metasploit_availability()
+        tools_status = huntkit.get_tool_status()
+        
+        return {
+            'success': True,
+            'info': {
+                'name': 'Metasploit Framework Integration',
+                'version': msf_info.get('version', 'Non détectée'),
+                'available': msf_info.get('available', False),
+                'path': msf_info.get('path', 'Non trouvé'),
+                'installation_type': msf_info.get('installation_type', 'Inconnue'),
+                'tools_included': [
+                    {'name': 'msfconsole', 'purpose': 'Console principale Metasploit'},
+                    {'name': 'msfvenom', 'purpose': 'Générateur de payloads'},
+                    {'name': 'msfdb', 'purpose': 'Gestionnaire de base de données'},
+                    {'name': 'exploits', 'purpose': 'Base de données d\'exploits'},
+                    {'name': 'auxiliary', 'purpose': 'Modules auxiliaires'},
+                    {'name': 'payloads', 'purpose': 'Payloads et encodeurs'}
+                ],
+                'supported_targets': [
+                    'Windows (x86/x64)',
+                    'Linux (x86/x64/ARM)',
+                    'macOS',
+                    'Android',
+                    'Applications web',
+                    'Services réseau'
+                ],
+                'estimated_scan_times': {
+                    'exploit_search': '10-30 secondes',
+                    'auxiliary_scan': '1-5 minutes selon le module',
+                    'exploitation': '30 secondes - 5 minutes',
+                    'framework_test': '2-5 minutes'
+                },
+                'metasploit_detailed': msf_info
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur info Metasploit: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
+@huntkit_bp.route('/api/metasploit/modules/popular')
+@login_required
+def api_metasploit_popular_modules():
+    """Liste des modules Metasploit populaires par catégorie"""
+    return {
+        'success': True,
+        'popular_modules': {
+            'network_services': [
+                {
+                    'module': 'auxiliary/scanner/ssh/ssh_login',
+                    'name': 'SSH Login Scanner',
+                    'description': 'Scanner de connexion SSH',
+                    'rank': 'Normal',
+                    'targets': ['SSH Servers']
+                },
+                {
+                    'module': 'auxiliary/scanner/smb/smb_login',
+                    'name': 'SMB Login Scanner', 
+                    'description': 'Scanner de connexion SMB',
+                    'rank': 'Normal',
+                    'targets': ['Windows SMB']
+                },
+                {
+                    'module': 'auxiliary/scanner/ftp/ftp_login',
+                    'name': 'FTP Login Scanner',
+                    'description': 'Scanner de connexion FTP',
+                    'rank': 'Normal',
+                    'targets': ['FTP Servers']
+                }
+            ],
+            'web_applications': [
+                {
+                    'module': 'auxiliary/scanner/http/http_login',
+                    'name': 'HTTP Login Scanner',
+                    'description': 'Scanner d\'authentification HTTP',
+                    'rank': 'Normal',
+                    'targets': ['Web Applications']
+                },
+                {
+                    'module': 'auxiliary/scanner/http/dir_scanner',
+                    'name': 'HTTP Directory Scanner',
+                    'description': 'Scanner de répertoires web',
+                    'rank': 'Normal',
+                    'targets': ['Web Servers']
+                }
+            ],
+            'famous_exploits': [
+                {
+                    'module': 'exploit/windows/smb/ms17_010_eternalblue',
+                    'name': 'MS17-010 EternalBlue',
+                    'description': 'Exploit SMB Windows (CVE-2017-0144)',
+                    'rank': 'Average',
+                    'targets': ['Windows 7/2008/2012']
+                },
+                {
+                    'module': 'exploit/multi/http/log4shell',
+                    'name': 'Log4Shell',
+                    'description': 'Apache Log4j RCE (CVE-2021-44228)', 
+                    'rank': 'Excellent',
+                    'targets': ['Java Applications']
+                }
+            ],
+            'database_services': [
+                {
+                    'module': 'auxiliary/scanner/mysql/mysql_login',
+                    'name': 'MySQL Login Scanner',
+                    'description': 'Scanner de connexion MySQL',
+                    'rank': 'Normal',
+                    'targets': ['MySQL Servers']
+                },
+                {
+                    'module': 'auxiliary/scanner/postgres/postgres_login',
+                    'name': 'PostgreSQL Login Scanner',
+                    'description': 'Scanner de connexion PostgreSQL',
+                    'rank': 'Normal',
+                    'targets': ['PostgreSQL Servers']
+                }
+            ]
+        }
+    }
+
 
 @huntkit_bp.route('/api/full-pentest/start', methods=['POST'])
 @login_required
