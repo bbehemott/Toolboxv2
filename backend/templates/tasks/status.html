@@ -1012,17 +1012,42 @@ function showGenericResults(result) {
 function showResults(result) {
     console.log('📊 Affichage des résultats:', result);
     
-    // Détecter automatiquement le type de résultats
     const resultData = result.result_data || result.results;
     
-    // Si c'est un scan de découverte (contient ping_scan ou port_scans)
-    if (resultData && (resultData.ping_scan || resultData.port_scans)) {
+    // 🔧 CORRECTION: Détection automatique du type de résultat
+    if (resultData && resultData.ping_scan || resultData.port_scans) {
         console.log('🌐 Détecté: Scan de découverte réseau');
         showDiscoveryResults(result);
         return;
     }
     
-    // Si c'est un audit web (contient nikto, nuclei, sqlmap)
+    // 🔧 NOUVEAU: Détection des résultats Metasploit par module
+    if (resultData && resultData.result && resultData.result.module) {
+        const module = resultData.result.module;
+        const scanType = resultData.result.scan_type;
+        
+        console.log(`🎯 Détecté: Scan Metasploit - Module: ${module}, Type: ${scanType}`);
+        
+        if (module.includes('_version') || scanType === 'version') {
+            showMetasploitVersionResults(result);
+            return;
+        } else if (module.includes('_login') || scanType === 'login') {
+            showMetasploitLoginResults(result);
+            return;
+        } else if (module.includes('_enum') || scanType === 'enum') {
+            showMetasploitEnumResults(result);
+            return;
+        }
+    }
+    
+    // 🔧 CORRECTION: Détection des résultats de force brute (Hydra)
+    if (resultData && (resultData.credentials_found || resultData.service) && resultData.result && resultData.result.parsed) {
+        console.log('🔨 Détecté: Force brute (Hydra)');
+        showBruteForceResults(result);
+        return;
+    }
+    
+    // 🔧 CORRECTION: Détection d'audit web
     if (resultData && resultData.results && 
         (resultData.results.nikto || resultData.results.nuclei || resultData.results.sqlmap)) {
         console.log('🕷️ Détecté: Audit web');
@@ -1030,52 +1055,172 @@ function showResults(result) {
         return;
     }
     
-    // Sinon, affichage amélioré pour les autres types
+    // Fallback: affichage générique amélioré
+    console.log('📋 Affichage générique pour résultats inconnus');
+    showGenericResults(result);
+}
+
+function showMetasploitVersionResults(result) {
     const resultsDiv = document.getElementById('task-results');
     const contentDiv = document.getElementById('results-content');
     
-    let html = '<h6>📊 Résultats détaillés :</h6>';
+    const resultData = result.result_data || result.results;
+    const msf_result = resultData.result;
     
-    // Essayer de formatter selon le contenu
-    if (resultData) {
-        // Si c'est un test d'outils
-        if (resultData.tools_available) {
-            html += formatToolsStatus(resultData);
-        }
-        // Si c'est un scan de force brute
-        else if (resultData.credentials_found || resultData.service) {
-            html += formatBruteForceResults(resultData);
-        }
-        // Affichage JSON amélioré pour tout le reste
-        else {
+    let html = `
+        <div class="alert alert-success">
+            <h6>✅ Scan de version terminé avec succès !</h6>
+            <p><strong>🎯 Cible :</strong> ${msf_result.target}</p>
+            <p><strong>🔧 Module :</strong> <code>${msf_result.module}</code></p>
+            <p><strong>📊 Type :</strong> ${msf_result.scan_type.toUpperCase()}</p>
+        </div>
+    `;
+    
+    // Informations sur le service détecté
+    if (msf_result.raw_output) {
+        html += `
+            <h6>🔍 Informations détectées :</h6>
+            <div class="card mb-3">
+                <div class="card-body">
+        `;
+        
+        // Parser les informations du raw_output
+        const output = msf_result.raw_output;
+        
+        if (output.includes('Key Fingerprint:')) {
+            // SSH Version info
+            const fingerprintMatch = output.match(/Key Fingerprint: (.+)/);
+            if (fingerprintMatch) {
+                html += `
+                    <div class="alert alert-info">
+                        <h6>🔑 SSH Service détecté</h6>
+                        <p><strong>Fingerprint:</strong> <code>${fingerprintMatch[1]}</code></p>
+                    </div>
+                `;
+            }
+        } else if (output.includes('HTTP')) {
+            // HTTP Version info
             html += `
                 <div class="alert alert-info">
-                    <strong>✅ Tâche terminée avec succès</strong>
+                    <h6>🌐 HTTP Service détecté</h6>
+                    <p>Service web actif sur le port ${msf_result.target.split(':')[1]}</p>
                 </div>
-                <div class="card">
-                    <div class="card-header">
-                        <h6>📋 Données brutes</h6>
-                    </div>
-                    <div class="card-body">
-                        <pre class="bg-light p-3 rounded" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-size: 14px;">${JSON.stringify(result, null, 2)}</pre>
-                    </div>
+            `;
+        } else if (output.includes('SMB')) {
+            // SMB Version info
+            html += `
+                <div class="alert alert-info">
+                    <h6>📁 SMB Service détecté</h6>
+                    <p>Service de partage de fichiers actif</p>
                 </div>
             `;
         }
-    } else {
-        // Fallback si pas de données structurées
+        
+        // Analyse de sécurité basique
         html += `
-            <div class="card">
-                <div class="card-body">
-                    <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap;">${JSON.stringify(result, null, 2)}</pre>
+                    <h6>🛡️ Analyse de sécurité :</h6>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Service actif
+                            <span class="badge bg-warning">⚠️ EXPOSÉ</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Version détectée
+                            <span class="badge bg-info">ℹ️ FINGERPRINT</span>
+                        </li>
+                    </ul>
                 </div>
             </div>
         `;
     }
     
+    // Conseils et actions suivantes
+    html += `
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card border-primary">
+                    <div class="card-body">
+                        <h6>💡 Actions suggérées</h6>
+                        <ul class="mb-0">
+    `;
+    
+    if (msf_result.service === 'ssh') {
+        html += `
+                            <li>🔨 Test de force brute SSH</li>
+                            <li>👥 Énumération des utilisateurs</li>
+                            <li>🔑 Test de clés SSH faibles</li>
+        `;
+    } else if (msf_result.service === 'http') {
+        html += `
+                            <li>🕷️ Audit web complet</li>
+                            <li>📁 Énumération des répertoires</li>
+                            <li>💉 Test d'injection SQL</li>
+        `;
+    } else if (msf_result.service === 'smb') {
+        html += `
+                            <li>📁 Énumération des partages</li>
+                            <li>🔨 Test de credentials SMB</li>
+                            <li>⚡ Test d'exploits SMB</li>
+        `;
+    }
+    
+    html += `
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-success">
+                    <div class="card-body">
+                        <h6>📋 Informations du scan</h6>
+                        <p><strong>Module :</strong> ${msf_result.module}</p>
+                        <p><strong>Durée :</strong> ${resultData.duration || '< 1 minute'}</p>
+                        <p><strong>Timestamp :</strong> ${new Date(resultData.timestamp).toLocaleString()}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Sortie brute (repliable)
+    html += `
+        <div class="mt-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <button class="btn btn-link text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#rawOutput">
+                            🖥️ Sortie brute Metasploit
+                        </button>
+                    </h6>
+                </div>
+                <div id="rawOutput" class="collapse">
+                    <div class="card-body">
+                        <pre class="bg-dark text-light p-3 rounded" style="max-height: 300px; overflow-y: auto; font-size: 12px;">${msf_result.raw_output}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Boutons d'action
+    html += `
+        <div class="mt-4">
+            <button class="btn btn-primary" onclick="downloadResults()">
+                💾 Télécharger rapport
+            </button>
+            <button class="btn btn-outline-info" onclick="copyResultsToClipboard()">
+                📋 Copier résultats
+            </button>
+            <button class="btn btn-outline-success" onclick="suggestNextAction('${msf_result.service}')">
+                🎯 Action suivante suggérée
+            </button>
+        </div>
+    `;
+    
     contentDiv.innerHTML = html;
     resultsDiv.style.display = 'block';
 }
+
 
 // Fonction pour formatter le statut des outils
 function formatToolsStatus(data) {

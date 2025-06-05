@@ -692,32 +692,53 @@ class SQLMapWrapper:
 # ===== NOUVEAU : WRAPPER METASPLOIT =====
 class MetasploitWrapper:
     """Wrapper pour Metasploit Framework - Exécution non-interactive"""
-    
+
     def __init__(self, tools_manager: HuntKitToolsManager):
         self.tools = tools_manager
         self.msf_path = '/usr/bin/msfconsole'
         self.msfrun_path = '/usr/local/bin/msfrun'
         
-        # Modules d'exploitation courants
-        self.common_exploits = {
+        # 🔧 CORRECTION: Modules pour VERSION SCANNING (pas login)
+        self.version_scanners = {
+            'ssh': 'auxiliary/scanner/ssh/ssh_version',
+            'ftp': 'auxiliary/scanner/ftp/ftp_version', 
+            'smb': 'auxiliary/scanner/smb/smb_version',
+            'http': 'auxiliary/scanner/http/http_version',
+            'mysql': 'auxiliary/scanner/mysql/mysql_version',
+            'postgresql': 'auxiliary/scanner/postgres/postgres_version',
+            'telnet': 'auxiliary/scanner/telnet/telnet_version',
+            'vnc': 'auxiliary/scanner/vnc/vnc_none_auth'
+        }
+        
+        # 🔧 CORRECTION: Modules pour LOGIN SCANNING (brute force)
+        self.login_scanners = {
             'ssh': 'auxiliary/scanner/ssh/ssh_login',
             'ftp': 'auxiliary/scanner/ftp/ftp_login', 
             'smb': 'auxiliary/scanner/smb/smb_login',
-            'http': 'auxiliary/scanner/http/dir_scanner',
+            'http': 'auxiliary/scanner/http/http_login',
             'mysql': 'auxiliary/scanner/mysql/mysql_login',
             'postgresql': 'auxiliary/scanner/postgres/postgres_login',
             'telnet': 'auxiliary/scanner/telnet/telnet_login',
             'vnc': 'auxiliary/scanner/vnc/vnc_login'
         }
         
-        # Payloads courants
+        # 🔧 CORRECTION: Modules pour ENUMERATION
+        self.enum_scanners = {
+            'ssh': 'auxiliary/scanner/ssh/ssh_enumusers',
+            'smb': 'auxiliary/scanner/smb/smb_enumshares',
+            'http': 'auxiliary/scanner/http/dir_scanner',
+            'mysql': 'auxiliary/admin/mysql/mysql_enum',
+            'ftp': 'auxiliary/scanner/ftp/anonymous'
+        }
+        
+        # Payloads courants (inchangés)
         self.common_payloads = {
             'linux': 'linux/x64/meterpreter/reverse_tcp',
             'windows': 'windows/meterpreter/reverse_tcp',
             'php': 'php/meterpreter_reverse_tcp',
             'java': 'java/meterpreter/reverse_tcp'
         }
-    
+
     def test_metasploit_availability(self) -> Dict[str, Any]:
         """Teste la disponibilité de Metasploit"""
         try:
@@ -803,19 +824,29 @@ class MetasploitWrapper:
                 'exploit_module': exploit_module,
                 'target': f"{target}:{port}"
             }
-    
+
     def run_auxiliary_scan(self, target: str, port: int, service: str, 
                           options: Dict = None, timeout: int = 300) -> Dict[str, Any]:
-        """Lance un module auxiliaire (scanner) Metasploit"""
+        """Lance un module auxiliaire (scanner) Metasploit - VERSION CORRIGÉE"""
         try:
-            # Sélectionner le module approprié selon le service
-            if service.lower() in self.common_exploits:
-                module = self.common_exploits[service.lower()]
+            # 🔧 CORRECTION: Déterminer le type de scan selon les options
+            scan_type = options.get('scan_type', 'version') if options else 'version'
+            
+            # Sélectionner le module selon le type de scan
+            if scan_type == 'version' and service.lower() in self.version_scanners:
+                module = self.version_scanners[service.lower()]
+            elif scan_type == 'login' and service.lower() in self.login_scanners:
+                module = self.login_scanners[service.lower()]
+            elif scan_type == 'enum' and service.lower() in self.enum_scanners:
+                module = self.enum_scanners[service.lower()]
+            elif service.lower() in self.version_scanners:
+                # Par défaut: version scanning
+                module = self.version_scanners[service.lower()]
             else:
                 # Module générique de scan de ports
                 module = 'auxiliary/scanner/portscan/tcp'
             
-            logger.info(f"🔍 Scan auxiliaire: {module} sur {target}:{port}")
+            logger.info(f"🔍 Scan auxiliaire: {module} sur {target}:{port} (type: {scan_type})")
             
             # Construire le script
             commands = self._build_auxiliary_script(target, port, module, options or {})
@@ -836,6 +867,7 @@ class MetasploitWrapper:
                     'module': module,
                     'target': f"{target}:{port}",
                     'service': service,
+                    'scan_type': scan_type,
                     'raw_output': result['stdout'],
                     'parsed_result': parsed_result
                 }
@@ -854,7 +886,7 @@ class MetasploitWrapper:
                 'target': f"{target}:{port}",
                 'service': service
             }
-    
+
     def search_exploits(self, service: str = None, platform: str = None, 
                        cve: str = None) -> Dict[str, Any]:
         """Recherche d'exploits dans la base Metasploit"""

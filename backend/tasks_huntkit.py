@@ -237,11 +237,12 @@ def huntkit_brute_force(self, target: str, service: str, username: str = None,
         logger.error(f"❌ Erreur force brute HuntKit: {e}")
         return create_error_result(str(e), f"{target}:{service}")
 
+
 @celery_app.task(bind=True, name='tasks_huntkit.metasploit_exploitation')
 @pentest_task_wrapper
 def metasploit_exploitation(self, target: str, port: int = None, service: str = None,
                            exploit_module: str = None, options: Dict = None):
-    """Exploitation avec Metasploit Framework"""
+    """Exploitation avec Metasploit Framework - VERSION CORRIGÉE"""
     task_id = self.request.id
     options = options or {}
     
@@ -265,31 +266,45 @@ def metasploit_exploitation(self, target: str, port: int = None, service: str = 
         
         update_task_progress(task_id, 30, f"Metasploit prêt: {msf_info.get('version', 'Version inconnue')}", "Configuration")
         
+        # 🔧 CORRECTION: Déterminer le type de scan selon le mode
+        mode = options.get('mode', 'safe')
+        
         # Déterminer les paramètres d'exploitation
         update_task_progress(task_id, 40, "Configuration de l'exploitation", "Configuration")
         
-        # Si aucun module spécifié, utiliser des modules de test sécurisés
+        # Si aucun module spécifié, utiliser des modules selon le mode
         if not exploit_module:
-            if service:
-                # Modules auxiliaires sécurisés pour tests
-                module_map = {
-                    'ssh': 'auxiliary/scanner/ssh/ssh_version',
-                    'ftp': 'auxiliary/scanner/ftp/ftp_version', 
-                    'http': 'auxiliary/scanner/http/http_version',
-                    'smb': 'auxiliary/scanner/smb/smb_version',
-                    'mysql': 'auxiliary/scanner/mysql/mysql_version'
-                }
-                exploit_module = module_map.get(service.lower(), 'auxiliary/scanner/portscan/tcp')
-            else:
-                # Module de scan générique et sécurisé
-                exploit_module = 'auxiliary/scanner/portscan/tcp'
+            if mode == 'safe':
+                # Mode sécurisé: version scanning uniquement
+                exploit_module = f'auxiliary/scanner/{service}/version' if service else 'auxiliary/scanner/portscan/tcp'
+                options['scan_type'] = 'version'
+            elif mode == 'test':
+                # Mode test: enumération et version
+                options['scan_type'] = 'enum'
+            elif mode == 'exploit':
+                # Mode exploitation: selon le service
+                if service:
+                    # Utiliser des exploits réels selon le service
+                    exploit_mapping = {
+                        'ssh': 'exploit/multi/ssh/sshexec',
+                        'smb': 'exploit/windows/smb/ms17_010_eternalblue', 
+                        'ftp': 'exploit/unix/ftp/vsftpd_234_backdoor',
+                        'http': 'auxiliary/scanner/http/http_login'
+                    }
+                    exploit_module = exploit_mapping.get(service.lower(), 'auxiliary/scanner/portscan/tcp')
+                else:
+                    exploit_module = 'auxiliary/scanner/portscan/tcp'
         
-        logger.info(f"🔧 Module sélectionné: {exploit_module}")
+        logger.info(f"🔧 Module sélectionné: {exploit_module} (mode: {mode})")
         update_task_progress(task_id, 50, f"Module: {exploit_module}", "Préparation")
         
         # Lancer l'exploitation
         update_task_progress(task_id, 60, "Lancement de l'exploitation", "Exploitation")
         start_time = time.time()
+        
+        # 🔧 CORRECTION: Passer le scan_type dans les options
+        if not options.get('scan_type'):
+            options['scan_type'] = 'version'  # Par défaut
         
         exploitation_result = huntkit.run_exploitation(
             target=target,
@@ -333,7 +348,9 @@ def metasploit_exploitation(self, target: str, port: int = None, service: str = 
             stats={
                 'sessions_opened': sessions_opened,
                 'credentials_found': credentials_found,
-                'vulnerabilities_found': vulnerabilities
+                'vulnerabilities_found': vulnerabilities,
+                'scan_type': options.get('scan_type', 'version'),
+                'mode': mode
             }
         )
         
