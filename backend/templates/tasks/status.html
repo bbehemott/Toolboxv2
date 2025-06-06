@@ -1077,48 +1077,89 @@ function showMetasploitVersionResults(result) {
         </div>
     `;
     
-    // ✅ NOUVEAU: Affichage spécial pour les scans de répertoires HTTP
+    // ✅ CORRECTION PRINCIPALE: Affichage des répertoires trouvés
     if (parsed_result && parsed_result.directories_found && parsed_result.directories_found.length > 0) {
+        const totalDirs = parsed_result.directories_found.length;
+        const accessibleDirs = parsed_result.directories_found.filter(dir => dir.accessible).length;
+        const interestingDirs = parsed_result.directories_found.filter(dir => dir.interesting).length;
+        
+        // ✅ NOUVEAU: Alerte selon le niveau de risque
+        if (accessibleDirs > 0) {
+            html += `
+                <div class="alert alert-danger">
+                    <h6>🚨 ${accessibleDirs} répertoire(s) ACCESSIBLE(S) découvert(s) !</h6>
+                    <p><strong>Risque de sécurité élevé :</strong> Ces répertoires peuvent contenir des informations sensibles.</p>
+                </div>
+            `;
+        } else if (interestingDirs > 0) {
+            html += `
+                <div class="alert alert-warning">
+                    <h6>⚠️ ${interestingDirs} répertoire(s) protégé(s) découvert(s) !</h6>
+                    <p>Ces répertoires sont protégés mais leur existence est révélée.</p>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="alert alert-info">
+                    <h6>📁 ${totalDirs} répertoire(s) découvert(s)</h6>
+                    <p>Répertoires détectés mais non accessibles.</p>
+                </div>
+            `;
+        }
+        
         html += `
-            <div class="alert alert-warning">
-                <h6>📁 ${parsed_result.directories_found.length} répertoire(s) découvert(s) !</h6>
-                <p>Ces répertoires peuvent contenir des informations sensibles.</p>
-            </div>
-            
             <h6>📁 Répertoires découverts :</h6>
             <div class="table-responsive mb-4">
                 <table class="table table-sm table-striped">
-                    <thead class="table-warning">
+                    <thead class="table-dark">
                         <tr>
                             <th>URL</th>
                             <th>Code HTTP</th>
-                            <th>Statut</th>
-                            <th>Recommandation</th>
+                            <th>Statut d'accès</th>
+                            <th>Niveau de risque</th>
+                            <th>Action recommandée</th>
                         </tr>
                     </thead>
                     <tbody>
         `;
         
         parsed_result.directories_found.forEach(dir => {
-            let statusBadge, recommendation;
+            let statusBadge, riskBadge, recommendation;
+            let rowClass = '';
             
             if (dir.accessible) {
                 statusBadge = '<span class="badge bg-danger">🔓 ACCESSIBLE</span>';
-                recommendation = '⚠️ Vérifier le contenu';
+                riskBadge = '<span class="badge bg-danger">🚨 ÉLEVÉ</span>';
+                recommendation = '⚠️ Examiner immédiatement le contenu';
+                rowClass = 'table-danger';
             } else if (dir.interesting) {
-                statusBadge = '<span class="badge bg-warning">🔒 PROTÉGÉ</span>';
-                recommendation = '🔍 Tenter enumération';
+                statusBadge = '<span class="badge bg-warning text-dark">🔒 PROTÉGÉ</span>';
+                riskBadge = '<span class="badge bg-warning text-dark">⚠️ MOYEN</span>';
+                recommendation = '🔍 Tenter l\'énumération approfondie';
+                rowClass = 'table-warning';
             } else {
                 statusBadge = '<span class="badge bg-secondary">❌ INACCESSIBLE</span>';
-                recommendation = 'ℹ️ Normal';
+                riskBadge = '<span class="badge bg-success">✅ FAIBLE</span>';
+                recommendation = 'ℹ️ Comportement normal';
+                rowClass = '';
             }
             
             html += `
-                <tr class="${dir.accessible ? 'table-danger' : dir.interesting ? 'table-warning' : ''}">
-                    <td><code>${dir.url}</code></td>
-                    <td><strong>${dir.status_code}</strong></td>
+                <tr class="${rowClass}">
+                    <td>
+                        <code>${dir.url}</code>
+                        <br><small class="text-muted">Chemin: ${new URL(dir.url).pathname}</small>
+                    </td>
+                    <td>
+                        <strong class="${dir.accessible ? 'text-danger' : dir.interesting ? 'text-warning' : 'text-muted'}">${dir.status_code}</strong>
+                        <br><small>${getHttpStatusDescription(dir.status_code)}</small>
+                    </td>
                     <td>${statusBadge}</td>
-                    <td><small>${recommendation}</small></td>
+                    <td>${riskBadge}</td>
+                    <td>
+                        <small>${recommendation}</small>
+                        ${dir.accessible ? '<br><button class="btn btn-sm btn-outline-danger" onclick="openUrlInNewTab(\'' + dir.url + '\')">🔗 Ouvrir</button>' : ''}
+                    </td>
                 </tr>
             `;
         });
@@ -1128,12 +1169,43 @@ function showMetasploitVersionResults(result) {
                 </table>
             </div>
         `;
+        
+        // ✅ NOUVEAU: Résumé sécuritaire
+        html += `
+            <div class="card border-info mb-3">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">🛡️ Analyse de sécurité</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h4 class="text-danger">${accessibleDirs}</h4>
+                                <small>Répertoires accessibles</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h4 class="text-warning">${interestingDirs}</h4>
+                                <small>Répertoires protégés</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h4 class="text-info">${totalDirs}</h4>
+                                <small>Total découverts</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     }
     
-    // ✅ NOUVEAU: Affichage des services détectés
+    // ✅ AMÉLIORATION: Services détectés avec plus de détails
     if (parsed_result && parsed_result.services_detected && parsed_result.services_detected.length > 0) {
         html += `
-            <h6>🔍 Services détectés :</h6>
+            <h6>🔍 Informations de scanning :</h6>
             <div class="card mb-3">
                 <div class="card-body">
                     <ul class="list-group list-group-flush">
@@ -1150,11 +1222,11 @@ function showMetasploitVersionResults(result) {
         `;
     }
     
-    // ✅ NOUVEAU: Affichage des erreurs avec conseils
+    // ✅ AMÉLIORATION: Affichage des erreurs avec conseils
     if (parsed_result && parsed_result.errors && parsed_result.errors.length > 0) {
         html += `
             <div class="alert alert-warning">
-                <h6>⚠️ Avertissements du module :</h6>
+                <h6>⚠️ Messages du module :</h6>
                 <ul class="mb-0">
         `;
         
@@ -1168,93 +1240,7 @@ function showMetasploitVersionResults(result) {
         `;
     }
     
-    // Informations sur le service détecté (section existante améliorée)
-    if (msf_result.raw_output) {
-        html += `
-            <h6>🔍 Informations détectées :</h6>
-            <div class="card mb-3">
-                <div class="card-body">
-        `;
-        
-        // Parser les informations du raw_output
-        const output = msf_result.raw_output;
-        
-        if (output.includes('Key Fingerprint:')) {
-            // SSH Version info
-            const fingerprintMatch = output.match(/Key Fingerprint: (.+)/);
-            if (fingerprintMatch) {
-                html += `
-                    <div class="alert alert-info">
-                        <h6>🔑 SSH Service détecté</h6>
-                        <p><strong>Fingerprint:</strong> <code>${fingerprintMatch[1]}</code></p>
-                    </div>
-                `;
-            }
-        } else if (output.includes('HTTP') || output.includes('Found http://')) {
-            // HTTP Service info
-            html += `
-                <div class="alert alert-info">
-                    <h6>🌐 HTTP Service détecté</h6>
-                    <p>Service web actif sur le port ${msf_result.target.split(':')[1]}</p>
-                    ${parsed_result && parsed_result.directories_found && parsed_result.directories_found.length > 0 ? 
-                        `<p><strong>📁 ${parsed_result.directories_found.length} répertoires découverts</strong></p>` : 
-                        '<p>Aucun répertoire supplémentaire découvert</p>'
-                    }
-                </div>
-            `;
-        } else if (output.includes('SMB')) {
-            // SMB Version info
-            html += `
-                <div class="alert alert-info">
-                    <h6>📁 SMB Service détecté</h6>
-                    <p>Service de partage de fichiers actif</p>
-                </div>
-            `;
-        } else {
-            // Service générique détecté
-            html += `
-                <div class="alert alert-info">
-                    <h6>🔧 Service ${msf_result.service.toUpperCase()} détecté</h6>
-                    <p>Service actif et répondant sur le port ${msf_result.target.split(':')[1]}</p>
-                </div>
-            `;
-        }
-        
-        // Analyse de sécurité basique
-        html += `
-                    <h6>🛡️ Analyse de sécurité :</h6>
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Service actif
-                            <span class="badge bg-warning">⚠️ EXPOSÉ</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Version détectée
-                            <span class="badge bg-info">ℹ️ FINGERPRINT</span>
-                        </li>
-        `;
-        
-        // Ajouter des éléments selon les découvertes
-        if (parsed_result && parsed_result.directories_found && parsed_result.directories_found.length > 0) {
-            const accessibleDirs = parsed_result.directories_found.filter(dir => dir.accessible).length;
-            if (accessibleDirs > 0) {
-                html += `
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Répertoires accessibles
-                            <span class="badge bg-danger">🚨 ${accessibleDirs} EXPOSÉ(S)</span>
-                        </li>
-                `;
-            }
-        }
-        
-        html += `
-                    </ul>
-                </div>
-            </div>
-        `;
-    }
-    
-    // Conseils et actions suivantes
+    // ✅ AMÉLIORATION: Actions recommandées selon les découvertes
     html += `
         <div class="row mt-4">
             <div class="col-md-6">
@@ -1264,41 +1250,36 @@ function showMetasploitVersionResults(result) {
                         <ul class="mb-0">
     `;
     
-    if (msf_result.service === 'ssh') {
-        html += `
-                            <li>🔨 Test de force brute SSH</li>
-                            <li>👥 Énumération des utilisateurs</li>
-                            <li>🔑 Test de clés SSH faibles</li>
-        `;
-    } else if (msf_result.service === 'http') {
-        html += `
-                            <li>🕷️ Audit web complet</li>
-                            <li>📁 Énumération approfondie des répertoires</li>
-                            <li>💉 Test d'injection SQL</li>
-        `;
+    if (parsed_result && parsed_result.directories_found && parsed_result.directories_found.length > 0) {
+        const accessibleDirs = parsed_result.directories_found.filter(dir => dir.accessible);
+        const interestingDirs = parsed_result.directories_found.filter(dir => dir.interesting);
         
-        // Suggestions spécifiques selon les répertoires trouvés
-        if (parsed_result && parsed_result.directories_found && parsed_result.directories_found.length > 0) {
-            const accessibleDirs = parsed_result.directories_found.filter(dir => dir.accessible);
-            if (accessibleDirs.length > 0) {
-                html += `
-                            <li>🔍 Explorer les répertoires accessibles trouvés</li>
-                            <li>🛡️ Vérifier les permissions des dossiers exposés</li>
-                `;
-            }
+        if (accessibleDirs.length > 0) {
+            html += `
+                            <li>🚨 <strong>PRIORITÉ:</strong> Explorer les répertoires accessibles</li>
+                            <li>📄 Vérifier les fichiers dans les dossiers exposés</li>
+                            <li>🔒 Sécuriser les répertoires sensibles</li>
+            `;
         }
-    } else if (msf_result.service === 'smb') {
+        
+        if (interestingDirs.length > 0) {
+            html += `
+                            <li>🔍 Tenter l'énumération sur les répertoires protégés</li>
+                            <li>🛠️ Utiliser des outils spécialisés (dirb, gobuster)</li>
+            `;
+        }
+        
         html += `
-                            <li>📁 Énumération des partages</li>
-                            <li>🔨 Test de credentials SMB</li>
-                            <li>⚡ Test d'exploits SMB</li>
+                            <li>🕷️ Lancer un audit web complet</li>
+                            <li>💉 Tester les injections SQL</li>
+                            <li>🔑 Rechercher des fichiers de configuration</li>
         `;
     } else {
-        // Actions génériques
         html += `
-                            <li>🔍 Énumération approfondie du service</li>
-                            <li>🔨 Test de credentials par défaut</li>
-                            <li>🛡️ Recherche de vulnérabilités connues</li>
+                            <li>📁 Utiliser une wordlist plus complète</li>
+                            <li>🔍 Essayer d'autres chemins de base</li>
+                            <li>🕷️ Lancer Nikto ou Nuclei</li>
+                            <li>📋 Vérifier robots.txt et sitemap.xml</li>
         `;
     }
     
@@ -1314,13 +1295,26 @@ function showMetasploitVersionResults(result) {
                         <p><strong>Module :</strong> <code>${msf_result.module}</code></p>
                         <p><strong>Durée :</strong> ${resultData.duration || '< 1 minute'}</p>
                         <p><strong>Timestamp :</strong> ${new Date(resultData.timestamp).toLocaleString()}</p>
-                        <p><strong>Statut :</strong> 
-                            ${parsed_result && parsed_result.module_status === 'success_with_findings' ? 
-                                '<span class="badge bg-success">✅ Découvertes importantes</span>' :
-                              parsed_result && parsed_result.module_status === 'success_with_info' ?
-                                '<span class="badge bg-info">ℹ️ Informations collectées</span>' :
-                                '<span class="badge bg-secondary">✅ Scan terminé</span>'
-                            }
+                        <p><strong>Efficacité :</strong> 
+    `;
+    
+    // ✅ NOUVEAU: Indicateur d'efficacité du scan
+    if (parsed_result && parsed_result.directories_found) {
+        const totalDirs = parsed_result.directories_found.length;
+        const accessibleDirs = parsed_result.directories_found.filter(dir => dir.accessible).length;
+        
+        if (accessibleDirs > 0) {
+            html += '<span class="badge bg-danger">🚨 Découvertes critiques</span>';
+        } else if (totalDirs > 0) {
+            html += '<span class="badge bg-warning">⚠️ Découvertes intéressantes</span>';
+        } else {
+            html += '<span class="badge bg-success">✅ Aucune exposition détectée</span>';
+        }
+    } else {
+        html += '<span class="badge bg-secondary">ℹ️ Scan terminé</span>';
+    }
+    
+    html += `
                         </p>
                     </div>
                 </div>
@@ -1328,7 +1322,7 @@ function showMetasploitVersionResults(result) {
         </div>
     `;
     
-    // Sortie brute (repliable)
+    // ✅ NOUVEAU: Sortie brute repliable avec highlight des découvertes
     html += `
         <div class="mt-4">
             <div class="card">
@@ -1341,18 +1335,18 @@ function showMetasploitVersionResults(result) {
                 </div>
                 <div id="rawOutput" class="collapse">
                     <div class="card-body">
-                        <pre class="bg-dark text-light p-3 rounded" style="max-height: 300px; overflow-y: auto; font-size: 12px;">${msf_result.raw_output}</pre>
+                        <pre class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto; font-size: 12px;" id="rawOutputContent">${msf_result.raw_output}</pre>
                     </div>
                 </div>
             </div>
         </div>
     `;
     
-    // Boutons d'action
+    // ✅ NOUVEAU: Boutons d'action améliorés
     html += `
         <div class="mt-4">
             <button class="btn btn-primary" onclick="downloadResults()">
-                💾 Télécharger rapport
+                💾 Télécharger rapport complet
             </button>
             <button class="btn btn-outline-info" onclick="copyResultsToClipboard()">
                 📋 Copier résultats
@@ -1360,15 +1354,80 @@ function showMetasploitVersionResults(result) {
             <button class="btn btn-outline-success" onclick="suggestNextAction('${msf_result.service}')">
                 🎯 Action suivante suggérée
             </button>
-            ${parsed_result && parsed_result.directories_found && parsed_result.directories_found.length > 0 ?
-                '<button class="btn btn-outline-warning" onclick="exportDirectoriesFound()">📁 Exporter répertoires</button>' : ''
-            }
-        </div>
     `;
+    
+    if (parsed_result && parsed_result.directories_found && parsed_result.directories_found.length > 0) {
+        html += `
+            <button class="btn btn-outline-warning" onclick="exportDirectoriesFound()">
+                📁 Exporter répertoires (.csv)
+            </button>
+        `;
+    }
+    
+    html += '</div>';
     
     contentDiv.innerHTML = html;
     resultsDiv.style.display = 'block';
+    
+    // ✅ NOUVEAU: Highlight des lignes importantes dans la sortie brute
+    setTimeout(() => {
+        highlightImportantLines();
+    }, 100);
 }
+
+// ✅ NOUVELLES FONCTIONS UTILITAIRES
+
+function getHttpStatusDescription(code) {
+    const descriptions = {
+        '200': 'OK - Succès',
+        '301': 'Moved Permanently',
+        '302': 'Found - Redirection',
+        '403': 'Forbidden - Accès interdit',
+        '404': 'Not Found - Introuvable',
+        '401': 'Unauthorized - Non autorisé',
+        '500': 'Internal Server Error'
+    };
+    return descriptions[code] || 'Code HTTP inconnu';
+}
+
+function openUrlInNewTab(url) {
+    window.open(url, '_blank');
+}
+
+function highlightImportantLines() {
+    const rawOutput = document.getElementById('rawOutputContent');
+    if (rawOutput) {
+        let content = rawOutput.innerHTML;
+        
+        // Highlight des lignes importantes
+        content = content.replace(/(\[+\] Found http[^\n]+)/g, '<span style="background-color: #ffeb3b; color: #000; font-weight: bold;">$1</span>');
+        content = content.replace(/(\[\*\] Using code[^\n]+)/g, '<span style="background-color: #e3f2fd; color: #1976d2;">$1</span>');
+        
+        rawOutput.innerHTML = content;
+    }
+}
+
+function exportDirectoriesFound() {
+    // Créer un CSV des répertoires trouvés
+    if (!window.metasploitResults || !window.metasploitResults.directories_found) {
+        alert('Aucune donnée de répertoires à exporter');
+        return;
+    }
+    
+    let csv = 'URL,Status Code,Accessible,Interesting,Security Risk\n';
+    window.metasploitResults.directories_found.forEach(dir => {
+        csv += `"${dir.url}",${dir.status_code},${dir.accessible},${dir.interesting},"${dir.security_risk}"\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `metasploit-directories-${taskId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
 
 // Fonction pour formatter le statut des outils
 function formatToolsStatus(data) {

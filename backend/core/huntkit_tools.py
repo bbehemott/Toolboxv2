@@ -1078,65 +1078,89 @@ exit
         return result
 
     def _parse_auxiliary_output(self, output: str, module: str) -> Dict[str, Any]:
-        """Parse la sortie d'un module auxiliaire - VERSION AMÉLIORÉE POUR HTTP"""
+        """Parse la sortie d'un module auxiliaire - VERSION CORRIGÉE POUR DIR_SCANNER"""
         result = {
             'scan_completed': True,
             'credentials_found': [],
             'hosts_discovered': [],
             'vulnerabilities': [],
-            'directories_found': [],  # ✅ NOUVEAU: Pour les scans de répertoires
-            'services_detected': [],  # ✅ NOUVEAU: Pour les services détectés
+            'directories_found': [],
+            'services_detected': [],
             'errors': [],
             'module_status': 'completed'
         }
         
         lines = output.split('\n')
+        logger.info(f"📝 Parsing {len(lines)} lignes pour module: {module}")
         
         for line in lines:
             line_lower = line.lower()
             line_stripped = line.strip()
             
-            # ✅ NOUVEAU: Détection des répertoires HTTP trouvés (amélioration regex)
-            if '[+] found http://' in line_lower or '[+] found https://' in line_lower:
-                # Format: [+] Found http://172.20.0.11:80/cgi-bin/ 403 (172.20.0.11)
-                # OU: [+] Found http://172.20.0.11:80/cgi-bin/ 403
-                url_match = re.search(r'\[+\] Found (https?://[^\s]+)\s+(\d+)', line, re.IGNORECASE)
+            # ✅ CORRECTION CRITIQUE: Améliorer la détection des répertoires trouvés
+            if '[+] found http' in line_lower:
+                # Format exact: [+] Found http://172.20.0.11:80/cgi-bin/ 403 (172.20.0.11)
+                # Nouveau regex plus robuste
+                url_match = re.search(r'\[\+\]\s+found\s+(https?://[^\s]+)\s+(\d+)(?:\s+\([^)]+\))?', line, re.IGNORECASE)
+                
                 if url_match:
                     url = url_match.group(1)
                     status_code = url_match.group(2)
-                    result['directories_found'].append({
+                    
+                    # ✅ NOUVEAU: Analyser le type de découverte
+                    is_accessible = status_code in ['200', '301', '302']
+                    is_interesting = status_code in ['403', '401', '500']
+                    
+                    directory_info = {
                         'url': url,
                         'status_code': status_code,
-                        'accessible': status_code in ['200', '301', '302'],
-                        'interesting': status_code in ['403', '401', '500']  # Codes intéressants
-                    })
-                    result['vulnerabilities'].append(f"Directory found: {url} (HTTP {status_code})")
-                    logger.info(f"📁 Répertoire trouvé: {url} (HTTP {status_code})")
+                        'accessible': is_accessible,
+                        'interesting': is_interesting,
+                        'security_risk': 'high' if is_accessible else 'medium' if is_interesting else 'low'
+                    }
+                    
+                    result['directories_found'].append(directory_info)
+                    
+                    # ✅ AMÉLIORATION: Message de vulnérabilité plus précis
+                    if is_accessible:
+                        vuln_msg = f"🚨 RÉPERTOIRE ACCESSIBLE: {url} (HTTP {status_code})"
+                    elif is_interesting:
+                        vuln_msg = f"⚠️ RÉPERTOIRE PROTÉGÉ: {url} (HTTP {status_code})"
+                    else:
+                        vuln_msg = f"📁 Répertoire détecté: {url} (HTTP {status_code})"
+                    
+                    result['vulnerabilities'].append(vuln_msg)
+                    
+                    logger.info(f"📁 Répertoire trouvé: {url} (HTTP {status_code}) - Accessible: {is_accessible}")
                 else:
-                    # Fallback: essayer de capturer manuellement
-                    if 'http://' in line or 'https://' in line:
-                        logger.debug(f"📁 Ligne de répertoire non parsée: {line_stripped}")
-                        result['vulnerabilities'].append(f"Directory detected: {line_stripped}")
+                    # Fallback: Log de la ligne non parsée pour debug
+                    logger.warning(f"📁 Ligne 'Found' non parsée: {line_stripped}")
+                    result['vulnerabilities'].append(f"📁 Répertoire détecté: {line_stripped}")
             
-            # ✅ AMÉLIORATION: Détection des erreurs de configuration Metasploit
-            elif 'auxiliary aborted due to failure' in line_lower:
+            # ✅ AMÉLIORATION: Détecter les informations de scanning
+            elif 'using code' in line_lower and 'not found' in line_lower:
+                # Format: [*] Using code '404' as not found for 172.20.0.11
+                code_match = re.search(r"using code ['\"](\d+)['\"] as not found", line_lower)
+                if code_match:
+                    error_code = code_match.group(1)
+                    result['services_detected'].append(f"Code d'erreur détecté: {error_code}")
+            
+            # ✅ AMÉLIORATION: Détecter la fin du scan
+            elif 'scanned' in line_lower and 'complete' in line_lower:
+                # Format: [*] Scanned 1 of 1 hosts (100% complete)
+                result['services_detected'].append(f"Scan terminé: {line_stripped}")
+            
+            # ✅ AMÉLIORATION: Détecter les erreurs spécifiques
+            elif 'auxiliary aborted' in line_lower:
                 result['module_status'] = 'aborted'
-                result['errors'].append(f"Module aborted: {line_stripped}")
-                
-            elif 'bad-config' in line_lower:
+                result['errors'].append(f"Module interrompu: {line_stripped}")
+            elif 'bad-config' in line_lower or 'configuration' in line_lower:
                 result['module_status'] = 'bad_config'
                 result['errors'].append("Configuration du module incorrecte")
-                
-            elif 'exploit failed' in line_lower:
-                result['module_status'] = 'failed'
-                result['errors'].append(f"Exploit failed: {line_stripped}")
+            elif 'connection refused' in line_lower or 'timeout' in line_lower:
+                result['errors'].append(f"Erreur réseau: {line_stripped}")
             
-            # ✅ NOUVEAU: Détection des informations de version HTTP
-            elif 'server:' in line_lower or 'x-powered-by:' in line_lower:
-                result['services_detected'].append(line_stripped)
-                result['vulnerabilities'].append(f"Service info: {line_stripped}")
-            
-            # Détection de credentials (inchangé)
+            # ✅ INCHANGÉ: Détection de credentials (pour autres modules)
             elif any(keyword in line_lower for keyword in ['login successful', 'valid credentials', 'success:']):
                 cred_match = re.search(r'(\w+):(\w+)', line)
                 if cred_match:
@@ -1146,39 +1170,35 @@ exit
                         'service': module.split('/')[-1] if '/' in module else 'unknown'
                     })
             
-            # Détection d'hôtes actifs
+            # ✅ INCHANGÉ: Détection d'hôtes actifs
             elif 'responding' in line_lower or 'alive' in line_lower:
                 host_match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
                 if host_match:
                     result['hosts_discovered'].append(host_match.group(1))
-            
-            # ✅ NOUVEAU: Détection d'informations SSH
-            elif 'ssh-' in line_lower and 'openssh' in line_lower:
-                result['vulnerabilities'].append(f"SSH Version detected: {line_stripped}")
-                result['services_detected'].append(line_stripped)
-            
-            # ✅ NOUVEAU: Détection d'erreurs réseau
-            elif any(keyword in line_lower for keyword in ['connection refused', 'timeout', 'unreachable']):
-                result['errors'].append(f"Network error: {line_stripped}")
-            
-            # Erreurs générales (filtrées)
-            elif any(keyword in line_lower for keyword in ['error', 'failed']) and 'aborted' not in line_lower:
-                result['errors'].append(line_stripped)
         
-        # ✅ NOUVEAU: Améliorer le message selon les résultats
-        if result['module_status'] == 'bad_config':
-            result['scan_completed'] = False
-            result['errors'].append("ℹ️ Ce module nécessite une configuration spécifique. Essayez un autre module.")
-        elif len(result['directories_found']) > 0:
-            result['module_status'] = 'success_with_findings'
+        # ✅ NOUVEAU: Déterminer le statut final selon les découvertes
+        directories_count = len(result['directories_found'])
+        accessible_dirs = len([d for d in result['directories_found'] if d['accessible']])
+        
+        if directories_count > 0:
+            if accessible_dirs > 0:
+                result['module_status'] = 'success_with_findings'
+                logger.info(f"✅ Succès avec découvertes importantes: {accessible_dirs}/{directories_count} répertoires accessibles")
+            else:
+                result['module_status'] = 'success_with_info'
+                logger.info(f"ℹ️ Succès avec informations: {directories_count} répertoires détectés")
         elif len(result['services_detected']) > 0:
             result['module_status'] = 'success_with_info'
+        elif len(result['errors']) > 0:
+            result['module_status'] = 'completed_with_warnings'
         
-        # ✅ DEBUG: Log des résultats parsés
-        logger.info(f"📊 Parse terminé - Répertoires: {len(result['directories_found'])}, Vulns: {len(result['vulnerabilities'])}")
-        if result['directories_found']:
-            for dir_info in result['directories_found']:
-                logger.info(f"📁 Répertoire parsé: {dir_info['url']} ({dir_info['status_code']})")
+        # ✅ NOUVEAU: Log du résumé du parsing
+        logger.info(f"📊 Parsing terminé pour {module}:")
+        logger.info(f"  - 📁 Répertoires trouvés: {directories_count}")
+        logger.info(f"  - 🚨 Accessibles: {accessible_dirs}")
+        logger.info(f"  - 🔧 Services détectés: {len(result['services_detected'])}")
+        logger.info(f"  - ⚠️ Erreurs: {len(result['errors'])}")
+        logger.info(f"  - 📊 Statut final: {result['module_status']}")
         
         return result
 
