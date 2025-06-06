@@ -829,22 +829,34 @@ class MetasploitWrapper:
                           options: Dict = None, timeout: int = 300) -> Dict[str, Any]:
         """Lance un module auxiliaire (scanner) Metasploit - VERSION CORRIGÉE"""
         try:
-            # 🔧 CORRECTION: Déterminer le type de scan selon les options
-            scan_type = options.get('scan_type', 'version') if options else 'version'
+            # 🔧 CORRECTION: Initialiser scan_type par défaut
+            scan_type = 'version'  # ✅ Valeur par défaut
             
-            # Sélectionner le module selon le type de scan
-            if scan_type == 'version' and service.lower() in self.version_scanners:
-                module = self.version_scanners[service.lower()]
-            elif scan_type == 'login' and service.lower() in self.login_scanners:
-                module = self.login_scanners[service.lower()]
-            elif scan_type == 'enum' and service.lower() in self.enum_scanners:
-                module = self.enum_scanners[service.lower()]
-            elif service.lower() in self.version_scanners:
-                # Par défaut: version scanning
-                module = self.version_scanners[service.lower()]
+            # 🔧 CORRECTION: Utiliser le module exact fourni dans les options
+            explicit_module = options.get('explicit_module') if options else None
+            
+            if explicit_module:
+                # ✅ Module explicitement fourni → l'utiliser sans modification
+                module = explicit_module
+                scan_type = options.get('scan_type', 'explicit') if options else 'explicit'
+                logger.info(f"🎯 Module auxiliaire explicite: {module}")
             else:
-                # Module générique de scan de ports
-                module = 'auxiliary/scanner/portscan/tcp'
+                # 🔧 Auto-sélection selon le type de scan demandé
+                scan_type = options.get('scan_type', 'version') if options else 'version'
+                
+                # Sélectionner le module selon le type de scan
+                if scan_type == 'version' and service.lower() in self.version_scanners:
+                    module = self.version_scanners[service.lower()]
+                elif scan_type == 'login' and service.lower() in self.login_scanners:
+                    module = self.login_scanners[service.lower()]
+                elif scan_type == 'enum' and service.lower() in self.enum_scanners:
+                    module = self.enum_scanners[service.lower()]
+                elif service.lower() in self.version_scanners:
+                    # Par défaut: version scanning
+                    module = self.version_scanners[service.lower()]
+                else:
+                    # Module générique de scan de ports
+                    module = 'auxiliary/scanner/portscan/tcp'
             
             logger.info(f"🔍 Scan auxiliaire: {module} sur {target}:{port} (type: {scan_type})")
             
@@ -1064,25 +1076,68 @@ exit
             result['status'] = 'completed'
         
         return result
-    
+
     def _parse_auxiliary_output(self, output: str, module: str) -> Dict[str, Any]:
-        """Parse la sortie d'un module auxiliaire"""
+        """Parse la sortie d'un module auxiliaire - VERSION AMÉLIORÉE POUR HTTP"""
         result = {
             'scan_completed': True,
             'credentials_found': [],
             'hosts_discovered': [],
             'vulnerabilities': [],
-            'errors': []
+            'directories_found': [],  # ✅ NOUVEAU: Pour les scans de répertoires
+            'services_detected': [],  # ✅ NOUVEAU: Pour les services détectés
+            'errors': [],
+            'module_status': 'completed'
         }
         
         lines = output.split('\n')
         
         for line in lines:
             line_lower = line.lower()
+            line_stripped = line.strip()
             
-            # Détection de credentials
-            if any(keyword in line_lower for keyword in ['login successful', 'valid credentials', 'success:']):
-                # Extraire les credentials si possible
+            # ✅ NOUVEAU: Détection des répertoires HTTP trouvés (amélioration regex)
+            if '[+] found http://' in line_lower or '[+] found https://' in line_lower:
+                # Format: [+] Found http://172.20.0.11:80/cgi-bin/ 403 (172.20.0.11)
+                # OU: [+] Found http://172.20.0.11:80/cgi-bin/ 403
+                url_match = re.search(r'\[+\] Found (https?://[^\s]+)\s+(\d+)', line, re.IGNORECASE)
+                if url_match:
+                    url = url_match.group(1)
+                    status_code = url_match.group(2)
+                    result['directories_found'].append({
+                        'url': url,
+                        'status_code': status_code,
+                        'accessible': status_code in ['200', '301', '302'],
+                        'interesting': status_code in ['403', '401', '500']  # Codes intéressants
+                    })
+                    result['vulnerabilities'].append(f"Directory found: {url} (HTTP {status_code})")
+                    logger.info(f"📁 Répertoire trouvé: {url} (HTTP {status_code})")
+                else:
+                    # Fallback: essayer de capturer manuellement
+                    if 'http://' in line or 'https://' in line:
+                        logger.debug(f"📁 Ligne de répertoire non parsée: {line_stripped}")
+                        result['vulnerabilities'].append(f"Directory detected: {line_stripped}")
+            
+            # ✅ AMÉLIORATION: Détection des erreurs de configuration Metasploit
+            elif 'auxiliary aborted due to failure' in line_lower:
+                result['module_status'] = 'aborted'
+                result['errors'].append(f"Module aborted: {line_stripped}")
+                
+            elif 'bad-config' in line_lower:
+                result['module_status'] = 'bad_config'
+                result['errors'].append("Configuration du module incorrecte")
+                
+            elif 'exploit failed' in line_lower:
+                result['module_status'] = 'failed'
+                result['errors'].append(f"Exploit failed: {line_stripped}")
+            
+            # ✅ NOUVEAU: Détection des informations de version HTTP
+            elif 'server:' in line_lower or 'x-powered-by:' in line_lower:
+                result['services_detected'].append(line_stripped)
+                result['vulnerabilities'].append(f"Service info: {line_stripped}")
+            
+            # Détection de credentials (inchangé)
+            elif any(keyword in line_lower for keyword in ['login successful', 'valid credentials', 'success:']):
                 cred_match = re.search(r'(\w+):(\w+)', line)
                 if cred_match:
                     result['credentials_found'].append({
@@ -1091,18 +1146,43 @@ exit
                         'service': module.split('/')[-1] if '/' in module else 'unknown'
                     })
             
-            # Détection d'hôtes
-            if 'responding' in line_lower or 'alive' in line_lower:
+            # Détection d'hôtes actifs
+            elif 'responding' in line_lower or 'alive' in line_lower:
                 host_match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
                 if host_match:
                     result['hosts_discovered'].append(host_match.group(1))
             
-            # Erreurs
-            if any(keyword in line_lower for keyword in ['error', 'failed', 'timeout']):
-                result['errors'].append(line.strip())
+            # ✅ NOUVEAU: Détection d'informations SSH
+            elif 'ssh-' in line_lower and 'openssh' in line_lower:
+                result['vulnerabilities'].append(f"SSH Version detected: {line_stripped}")
+                result['services_detected'].append(line_stripped)
+            
+            # ✅ NOUVEAU: Détection d'erreurs réseau
+            elif any(keyword in line_lower for keyword in ['connection refused', 'timeout', 'unreachable']):
+                result['errors'].append(f"Network error: {line_stripped}")
+            
+            # Erreurs générales (filtrées)
+            elif any(keyword in line_lower for keyword in ['error', 'failed']) and 'aborted' not in line_lower:
+                result['errors'].append(line_stripped)
+        
+        # ✅ NOUVEAU: Améliorer le message selon les résultats
+        if result['module_status'] == 'bad_config':
+            result['scan_completed'] = False
+            result['errors'].append("ℹ️ Ce module nécessite une configuration spécifique. Essayez un autre module.")
+        elif len(result['directories_found']) > 0:
+            result['module_status'] = 'success_with_findings'
+        elif len(result['services_detected']) > 0:
+            result['module_status'] = 'success_with_info'
+        
+        # ✅ DEBUG: Log des résultats parsés
+        logger.info(f"📊 Parse terminé - Répertoires: {len(result['directories_found'])}, Vulns: {len(result['vulnerabilities'])}")
+        if result['directories_found']:
+            for dir_info in result['directories_found']:
+                logger.info(f"📁 Répertoire parsé: {dir_info['url']} ({dir_info['status_code']})")
         
         return result
-    
+
+
     def _parse_search_output(self, output: str) -> List[Dict[str, str]]:
         """Parse la sortie d'une recherche d'exploits"""
         exploits = []
@@ -1278,24 +1358,50 @@ class HuntKitIntegration:
 
     def run_exploitation(self, target: str, port: int = None, service: str = None, 
                         exploit_module: str = None, options: Dict = None) -> Dict[str, Any]:
-        """Lance une exploitation avec Metasploit - NOUVELLE FONCTION"""
+        """Lance une exploitation avec Metasploit - VERSION CORRIGÉE POUR SÉLECTION MODULE"""
         logger.info(f"🎯 Début exploitation: {target}")
         
         start_time = time.time()
         
         try:
-            # Si aucun module spécifié, essayer de deviner selon le service
-            if not exploit_module and service:
-                # Utiliser des modules par défaut SEULEMENT si aucun module spécifié
-                service_defaults = {
-                    'ssh': 'auxiliary/scanner/ssh/ssh_login',
-                    'smb': 'exploit/windows/smb/ms17_010_eternalblue',
-                    'http': 'auxiliary/scanner/http/title',
-                    'ftp': 'auxiliary/scanner/ftp/ftp_login'
-                }
-                exploit_module = service_defaults.get(service.lower())
-                if not exploit_module:
-                    exploit_module = f'auxiliary/scanner/{service}/{service}_login'
+            # ✅ CORRECTION: Utiliser exactement le module fourni
+            if exploit_module:
+                # Module explicitement fourni → l'utiliser sans modification
+                final_module = exploit_module
+                logger.info(f"🎯 Module explicite fourni: {final_module}")
+            else:
+                # Pas de module fourni → auto-sélection selon service et mode
+                mode = options.get('mode', 'safe') if options else 'safe'
+                
+                if not service:
+                    logger.warning("⚠️ Aucun service ni module spécifié, utilisation du fallback")
+                    final_module = 'auxiliary/scanner/portscan/tcp'
+                else:
+                    # Auto-sélection selon le service ET le mode
+                    if mode == 'safe':
+                        service_defaults = {
+                            'ssh': 'auxiliary/scanner/ssh/ssh_version',
+                            'http': 'auxiliary/scanner/http/http_version',
+                            'smb': 'auxiliary/scanner/smb/smb_version',
+                            'ftp': 'auxiliary/scanner/ftp/ftp_version'
+                        }
+                    elif mode == 'test':
+                        service_defaults = {
+                            'ssh': 'auxiliary/scanner/ssh/ssh_login',
+                            'http': 'auxiliary/scanner/http/http_login',
+                            'smb': 'auxiliary/scanner/smb/smb_login',
+                            'ftp': 'auxiliary/scanner/ftp/ftp_login'
+                        }
+                    else:  # exploit mode
+                        service_defaults = {
+                            'ssh': 'exploit/multi/ssh/sshexec',
+                            'smb': 'exploit/windows/smb/ms17_010_eternalblue',
+                            'ftp': 'exploit/unix/ftp/vsftpd_234_backdoor'
+                        }
+                    
+                    final_module = service_defaults.get(service.lower(), f'auxiliary/scanner/{service}/{service}_version')
+                
+                logger.info(f"🤖 Module auto-sélectionné: {final_module} (service: {service}, mode: {mode})")
             
             # Port par défaut selon le service
             if not port and service:
@@ -1305,16 +1411,23 @@ class HuntKitIntegration:
                 }
                 port = port_mapping.get(service.lower(), 80)
             
-            # Lancer l'exploitation
-            if exploit_module.startswith('auxiliary/'):
+            # ✅ LANCER avec le module final déterminé
+            logger.info(f"🚀 Lancement effectif: {final_module} sur {target}:{port}")
+            
+            # ✅ CORRECTION PRINCIPALE: Passer le module exact aux fonctions
+            if final_module.startswith('auxiliary/'):
+                # Passer le module exact dans les options
+                enhanced_options = options.copy() if options else {}
+                enhanced_options['explicit_module'] = final_module  # ✅ NOUVEAU: Forcer le module exact
+                
                 result = self.metasploit.run_auxiliary_scan(
-                    target, port or 80, service or 'unknown', options
+                    target, port or 80, service or 'unknown', enhanced_options
                 )
             else:
                 result = self.metasploit.run_exploit_module(
-                    target, port or 80, exploit_module, options
+                    target, port or 80, final_module, options
                 )
-            
+
             duration = int(time.time() - start_time)
             
             return {
@@ -1331,12 +1444,16 @@ class HuntKitIntegration:
             
         except Exception as e:
             duration = int(time.time() - start_time)
-            logger.error(f"❌ Erreur exploitation: {e}")
+            error_msg = str(e)
+            logger.error(f"❌ Erreur exploitation Metasploit: {error_msg}")
             
             return {
                 'success': False,
                 'target': target,
-                'error': str(e),
+                'port': port,
+                'service': service,
+                'exploit_module': exploit_module or final_module if 'final_module' in locals() else 'unknown',
+                'error': error_msg,
                 'duration': duration,
                 'timestamp': datetime.now().isoformat()
             }

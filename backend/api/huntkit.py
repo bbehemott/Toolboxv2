@@ -334,13 +334,52 @@ def api_start_metasploit_exploitation():
                     'error': 'Port invalide (1-65535)'
                 }, 400
         
-        # Mode de sécurité
+        # ✅ FIX: Respecter le module sélectionné par l'utilisateur
         mode = options.get('mode', 'safe')
         if mode not in ['safe', 'test', 'exploit']:
             return {
                 'success': False,
                 'error': 'Mode invalide (safe, test, exploit)'
             }, 400
+        
+        if exploit_module:
+            # L'utilisateur a explicitement choisi un module → l'utiliser tel quel
+            logger.info(f"🎯 Module explicitement sélectionné: {exploit_module}")
+            final_module = exploit_module
+        elif service:
+            # Pas de module spécifique → choisir selon le service ET le mode
+            if mode == 'safe':
+                service_modules = {
+                    'ssh': 'auxiliary/scanner/ssh/ssh_version',
+                    'http': 'auxiliary/scanner/http/http_version',
+                    'https': 'auxiliary/scanner/http/http_version',
+                    'ftp': 'auxiliary/scanner/ftp/ftp_version',
+                    'smb': 'auxiliary/scanner/smb/smb_version',
+                    'mysql': 'auxiliary/scanner/mysql/mysql_version',
+                    'postgresql': 'auxiliary/scanner/postgres/postgres_version'
+                }
+                final_module = service_modules.get(service.lower(), 'auxiliary/scanner/portscan/tcp')
+            elif mode == 'test':
+                service_modules = {
+                    'ssh': 'auxiliary/scanner/ssh/ssh_login',
+                    'http': 'auxiliary/scanner/http/http_login',
+                    'ftp': 'auxiliary/scanner/ftp/ftp_login',
+                    'smb': 'auxiliary/scanner/smb/smb_login',
+                    'mysql': 'auxiliary/scanner/mysql/mysql_login',
+                    'postgresql': 'auxiliary/scanner/postgres/postgres_login'
+                }
+                final_module = service_modules.get(service.lower(), 'auxiliary/scanner/portscan/tcp')
+            else:  # mode == 'exploit'
+                service_modules = {
+                    'ssh': 'exploit/multi/ssh/sshexec',
+                    'smb': 'exploit/windows/smb/ms17_010_eternalblue',
+                    'ftp': 'exploit/unix/ftp/vsftpd_234_backdoor'
+                }
+                final_module = service_modules.get(service.lower(), 'auxiliary/scanner/portscan/tcp')
+        else:
+            final_module = 'auxiliary/scanner/portscan/tcp'
+        
+        logger.info(f"🎯 Module final sélectionné: {final_module} (mode: {mode})")
         
         # Confirmation supplémentaire pour le mode exploitation
         if mode == 'exploit':
@@ -352,7 +391,7 @@ def api_start_metasploit_exploitation():
             target=target,
             port=port,
             service=service if service else None,
-            exploit_module=exploit_module if exploit_module else None,
+            exploit_module=final_module,  # ✅ Utiliser le module final déterminé
             options=options,
             user_id=session.get('user_id')
         )
@@ -370,7 +409,7 @@ def api_start_metasploit_exploitation():
             }, 500
             
     except Exception as e:
-        logger.error(f"Erreur API exploitation Metasploit: {e}")
+        logger.error(f"❌ Erreur API exploitation Metasploit: {e}")
         return {
             'success': False,
             'error': str(e)
