@@ -252,58 +252,6 @@ def api_start_brute_force():
             'error': str(e)
         }, 500
 
-
-@huntkit_bp.route('/api/metasploit/search/start', methods=['POST'])
-@login_required
-def api_start_metasploit_search():
-    """API pour lancer une recherche d'exploits Metasploit"""
-    try:
-        data = request.get_json()
-        
-        # Paramètres de recherche
-        query = data.get('query', '').strip()
-        service = data.get('service', '').strip()
-        platform = data.get('platform', '').strip()
-        cve = data.get('cve', '').strip()
-        exploits_only = data.get('exploits_only', True)
-        auxiliary_only = data.get('auxiliary_only', False)
-        
-        # Validation : au moins un critère requis
-        if not any([query, service, platform, cve]):
-            return {
-                'success': False,
-                'error': 'Au moins un critère de recherche est requis'
-            }, 400
-        
-        # Lancer la tâche de recherche
-        task_manager = TaskManager(current_app.db)
-        task_id = task_manager.start_metasploit_search(
-            service=service if service else None,
-            platform=platform if platform else None,
-            cve=cve if cve else None,
-            user_id=session.get('user_id')
-        )
-        
-        if task_id:
-            return {
-                'success': True,
-                'task_id': task_id,
-                'message': f'Recherche d\'exploits lancée'
-            }
-        else:
-            return {
-                'success': False,
-                'error': 'Impossible de lancer la recherche'
-            }, 500
-            
-    except Exception as e:
-        logger.error(f"Erreur API recherche Metasploit: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
-
-
 @huntkit_bp.route('/api/metasploit/exploitation/start', methods=['POST'])
 @login_required
 def api_start_metasploit_exploitation():
@@ -415,173 +363,11 @@ def api_start_metasploit_exploitation():
             'error': str(e)
         }, 500
 
-
-@huntkit_bp.route('/api/metasploit/test/start', methods=['POST'])
-@login_required
-def api_start_metasploit_test():
-    """API pour lancer un test du framework Metasploit"""
-    try:
-        # Lancer la tâche de test
-        task_manager = TaskManager(current_app.db)
-        task_id = task_manager.start_metasploit_test(
-            user_id=session.get('user_id')
-        )
-        
-        if task_id:
-            return {
-                'success': True,
-                'task_id': task_id,
-                'message': 'Test du framework Metasploit lancé'
-            }
-        else:
-            return {
-                'success': False,
-                'error': 'Impossible de lancer le test Metasploit'
-            }, 500
-            
-    except Exception as e:
-        logger.error(f"Erreur API test Metasploit: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
-
-
-@huntkit_bp.route('/api/metasploit/info')
-@login_required
-def api_metasploit_info():
-    """Informations sur l'intégration Metasploit"""
-    try:
-        from core.huntkit_tools import HuntKitIntegration
-        huntkit = HuntKitIntegration()
-        
-        # Récupérer les informations Metasploit
-        msf_info = huntkit.metasploit.test_metasploit_availability()
-        tools_status = huntkit.get_tool_status()
-        
-        return {
-            'success': True,
-            'info': {
-                'name': 'Metasploit Framework Integration',
-                'version': msf_info.get('version', 'Non détectée'),
-                'available': msf_info.get('available', False),
-                'path': msf_info.get('path', 'Non trouvé'),
-                'installation_type': msf_info.get('installation_type', 'Inconnue'),
-                'tools_included': [
-                    {'name': 'msfconsole', 'purpose': 'Console principale Metasploit'},
-                    {'name': 'msfvenom', 'purpose': 'Générateur de payloads'},
-                    {'name': 'msfdb', 'purpose': 'Gestionnaire de base de données'},
-                    {'name': 'exploits', 'purpose': 'Base de données d\'exploits'},
-                    {'name': 'auxiliary', 'purpose': 'Modules auxiliaires'},
-                    {'name': 'payloads', 'purpose': 'Payloads et encodeurs'}
-                ],
-                'supported_targets': [
-                    'Windows (x86/x64)',
-                    'Linux (x86/x64/ARM)',
-                    'macOS',
-                    'Android',
-                    'Applications web',
-                    'Services réseau'
-                ],
-                'estimated_scan_times': {
-                    'exploit_search': '10-30 secondes',
-                    'auxiliary_scan': '1-5 minutes selon le module',
-                    'exploitation': '30 secondes - 5 minutes',
-                    'framework_test': '2-5 minutes'
-                },
-                'metasploit_detailed': msf_info
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Erreur info Metasploit: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
-
-
-@huntkit_bp.route('/api/metasploit/modules/popular')
-@login_required
-def api_metasploit_popular_modules():
-    """Liste des modules Metasploit populaires par catégorie"""
-    return {
-        'success': True,
-        'popular_modules': {
-            'network_services': [
-                {
-                    'module': 'auxiliary/scanner/ssh/ssh_login',
-                    'name': 'SSH Login Scanner',
-                    'description': 'Scanner de connexion SSH',
-                    'rank': 'Normal',
-                    'targets': ['SSH Servers']
-                },
-                {
-                    'module': 'auxiliary/scanner/smb/smb_login',
-                    'name': 'SMB Login Scanner', 
-                    'description': 'Scanner de connexion SMB',
-                    'rank': 'Normal',
-                    'targets': ['Windows SMB']
-                },
-                {
-                    'module': 'auxiliary/scanner/ftp/ftp_login',
-                    'name': 'FTP Login Scanner',
-                    'description': 'Scanner de connexion FTP',
-                    'rank': 'Normal',
-                    'targets': ['FTP Servers']
-                }
-            ],
-            'web_applications': [
-                {
-                    'module': 'auxiliary/scanner/http/http_login',
-                    'name': 'HTTP Login Scanner',
-                    'description': 'Scanner d\'authentification HTTP',
-                    'rank': 'Normal',
-                    'targets': ['Web Applications']
-                },
-                {
-                    'module': 'auxiliary/scanner/http/dir_scanner',
-                    'name': 'HTTP Directory Scanner',
-                    'description': 'Scanner de répertoires web',
-                    'rank': 'Normal',
-                    'targets': ['Web Servers']
-                }
-            ],
-            'famous_exploits': [
-                {
-                    'module': 'exploit/windows/smb/ms17_010_eternalblue',
-                    'name': 'MS17-010 EternalBlue',
-                    'description': 'Exploit SMB Windows (CVE-2017-0144)',
-                    'rank': 'Average',
-                    'targets': ['Windows 7/2008/2012']
-                },
-                {
-                    'module': 'exploit/multi/http/log4shell',
-                    'name': 'Log4Shell',
-                    'description': 'Apache Log4j RCE (CVE-2021-44228)', 
-                    'rank': 'Excellent',
-                    'targets': ['Java Applications']
-                }
-            ],
-            'database_services': [
-                {
-                    'module': 'auxiliary/scanner/mysql/mysql_login',
-                    'name': 'MySQL Login Scanner',
-                    'description': 'Scanner de connexion MySQL',
-                    'rank': 'Normal',
-                    'targets': ['MySQL Servers']
-                },
-                {
-                    'module': 'auxiliary/scanner/postgres/postgres_login',
-                    'name': 'PostgreSQL Login Scanner',
-                    'description': 'Scanner de connexion PostgreSQL',
-                    'rank': 'Normal',
-                    'targets': ['PostgreSQL Servers']
-                }
-            ]
-        }
-    }
-
+# ===== SUPPRESSION DES ENDPOINTS INUTILES =====
+# ❌ SUPPRIMÉ: api_start_metasploit_search (page "Recherche d'exploits" supprimée)
+# ❌ SUPPRIMÉ: api_start_metasploit_test (page "Test Framework" supprimée)
+# ❌ SUPPRIMÉ: api_metasploit_info (fonctionnalité test supprimée)
+# ❌ SUPPRIMÉ: api_metasploit_popular_modules (page recherche supprimée)
 
 @huntkit_bp.route('/api/full-pentest/start', methods=['POST'])
 @login_required
@@ -707,7 +493,7 @@ def api_available_huntkit_modules():
         'tools_integrated': ['nmap', 'hydra', 'nikto', 'nuclei', 'sqlmap', 'metasploit']
     }
 
-# ===== FONCTIONS DE VALIDATION =====
+# ===== FONCTIONS DE VALIDATION (INCHANGÉES) =====
 
 def _validate_network_target(target: str) -> bool:
     """Valide une cible réseau (IP, CIDR, hostname)"""
@@ -771,7 +557,7 @@ def _validate_host_target(target: str) -> bool:
     
     return False
 
-# ===== INFORMATION ET AIDE =====
+# ===== INFORMATION ET AIDE (INCHANGÉES) =====
 
 @huntkit_bp.route('/api/info')
 @login_required
@@ -866,4 +652,4 @@ def _format_bytes(size: int) -> str:
         size /= 1024
     return f"{size:.1f} TB"
 
-logger.info("🔧 Module HuntKit routes chargé avec 10 endpoints")
+logger.info("🔧 Module HuntKit routes chargé avec suppressions selon plan d'action")

