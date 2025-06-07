@@ -451,7 +451,7 @@ def api_session_info(session_id):
 @huntkit_bp.route('/api/sessions/<int:session_id>/execute', methods=['POST'])
 @login_required
 def api_session_execute_command(session_id):
-    """API pour exécuter une commande sur une session"""
+    """API pour exécuter une commande sur une session - VERSION CORRIGÉE"""
     try:
         from services.session_manager import SessionManager
         session_manager = SessionManager(current_app.db)
@@ -497,12 +497,17 @@ def api_session_execute_command(session_id):
                 'error': 'Commande interdite pour sécurité'
             }, 400
         
-        # Exécuter la commande
+        # ✅ CORRECTION PRINCIPALE : Utiliser le vrai session_id de Metasploit
+        metasploit_session_id = session_info['session_id']  # ID réel de Metasploit
+        
+        logger.info(f"🔧 Commande manuelle: {command} sur session MSF #{metasploit_session_id} (DB ID: {session_id})")
+        
+        # Exécuter la commande avec le bon ID
         from core.huntkit_tools import HuntKitIntegration
         huntkit = HuntKitIntegration()
         
         result = huntkit.metasploit.execute_session_command(
-            session_info['session_id'], command
+            metasploit_session_id, command  # ✅ Utiliser le bon ID Metasploit
         )
         
         # Enregistrer la commande manuelle
@@ -521,7 +526,11 @@ def api_session_execute_command(session_id):
         return {
             'success': True,
             'command': command,
-            'result': result
+            'result': result,
+            'session_info': {
+                'db_id': session_id,
+                'metasploit_id': metasploit_session_id
+            }
         }
         
     except Exception as e:

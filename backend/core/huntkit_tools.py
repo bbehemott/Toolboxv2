@@ -1394,9 +1394,9 @@ exit
         return sessions
 
     def get_active_sessions(self, timeout: int = 60) -> Dict[str, Any]:
-        """Récupère la liste des sessions actives"""
+        """Récupère la liste des sessions actives - VERSION AMÉLIORÉE"""
         try:
-            # Script pour lister les sessions
+            # ✅ CORRECTION : Script simple pour lister les sessions
             commands = """
 sessions -l
 exit
@@ -1410,14 +1410,24 @@ exit
                 command = [self.msf_path, '-q', '-r', script_path]
                 result = self.tools._run_command(command, timeout)
                 
-                sessions = self._parse_sessions_list(result['stdout'])
-                
-                return {
-                    'success': True,
-                    'sessions': sessions,
-                    'total_sessions': len(sessions)
-                }
-                
+                if result['success']:
+                    sessions = self._parse_sessions_list(result['stdout'])
+                    
+                    logger.info(f"🎯 {len(sessions)} sessions actives trouvées dans Metasploit")
+                    
+                    return {
+                        'success': True,
+                        'sessions': sessions,
+                        'total_sessions': len(sessions),
+                        'raw_output': result['stdout']
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': result['stderr'],
+                        'sessions': []
+                    }
+                    
             finally:
                 try:
                     os.unlink(script_path)
@@ -1432,34 +1442,51 @@ exit
                 'sessions': []
             }
 
+
     def _parse_sessions_list(self, output: str) -> List[Dict[str, Any]]:
-        """Parse la sortie de 'sessions -l'"""
+        """Parse la sortie de 'sessions -l' - VERSION AMÉLIORÉE"""
         sessions = []
         lines = output.split('\n')
         
+        logger.debug(f"📝 Parsing sessions list: {len(lines)} lignes")
+        
         for line in lines:
-            # Format: "  1  meterpreter x86/linux  172.20.0.10:1234  172.20.0.10"
-            session_match = re.match(r'\s*(\d+)\s+(\w+)\s+([\w/]+)\s+([\d.:]+)\s+([\d.]+)', line)
+            line = line.strip()
+            
+            # ✅ CORRECTION : Format exact de sessions -l
+            # Format: "  1  meterpreter x86/linux  192.168.1.10:4444 -> 192.168.1.100:80  192.168.1.100"
+            session_match = re.match(r'\s*(\d+)\s+(\w+)\s+([\w/]+)\s+([\d.:>-\s]+)\s+([\d.]+).*', line)
+            
             if session_match:
+                session_id = session_match.group(1)
+                session_type = session_match.group(2)
+                platform = session_match.group(3)
+                connection = session_match.group(4)
+                target_ip = session_match.group(5)
+                
+                logger.info(f"🎯 Session trouvée: #{session_id} ({session_type}) vers {target_ip}")
+                
                 sessions.append({
-                    'session_id': session_match.group(1),
-                    'session_type': session_match.group(2),
-                    'platform': session_match.group(3),
-                    'connection': session_match.group(4),
-                    'target_ip': session_match.group(5),
+                    'session_id': session_id,
+                    'session_type': session_type,
+                    'platform': platform,
+                    'connection': connection.strip(),
+                    'target_ip': target_ip,
                     'status': 'active'
                 })
         
         return sessions
 
+
     def execute_session_command(self, session_id: str, command: str, timeout: int = 300) -> Dict[str, Any]:
-        """Execute une commande sur une session spécifique"""
+        """Execute une commande sur une session spécifique - VERSION FINALE"""
         try:
-            # Script pour exécuter une commande sur une session
+            logger.info(f"🔧 Exécution commande sur session {session_id}: {command}")
+            
+            # ✅ CORRECTION FINALE : Trouver la vraie session et exécuter
             commands = f"""
-sessions -i {session_id}
-{command}
-background
+sessions -l
+sessions -i {session_id} -c "{command}"
 exit
 """
             
@@ -1471,13 +1498,25 @@ exit
                 command_exec = [self.msf_path, '-q', '-r', script_path]
                 result = self.tools._run_command(command_exec, timeout)
                 
-                return {
-                    'success': result['success'],
-                    'session_id': session_id,
-                    'command': command,
-                    'output': result['stdout'],
-                    'error': result['stderr'] if not result['success'] else None
-                }
+                if result['success']:
+                    # ✅ PARSER LA VRAIE SORTIE
+                    output = self._extract_real_command_output(result['stdout'], command)
+                    
+                    return {
+                        'success': True,
+                        'session_id': session_id,
+                        'command': command,
+                        'output': output,
+                        'raw_output': result['stdout']
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'session_id': session_id,
+                        'command': command,
+                        'error': result['stderr'],
+                        'raw_output': result['stdout']
+                    }
                 
             finally:
                 try:
@@ -1493,6 +1532,134 @@ exit
                 'command': command,
                 'error': str(e)
             }
+
+    def execute_session_command(self, session_id: str, command: str, timeout: int = 300) -> Dict[str, Any]:
+        """Execute une commande sur une session spécifique - VERSION FINALE"""
+        try:
+            logger.info(f"🔧 Exécution commande sur session {session_id}: {command}")
+            
+            # ✅ CORRECTION FINALE : Trouver la vraie session et exécuter
+            commands = f"""
+sessions -l
+sessions -i {session_id} -c "{command}"
+exit
+"""
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.rc', delete=False) as f:
+                f.write(commands)
+                script_path = f.name
+            
+            try:
+                command_exec = [self.msf_path, '-q', '-r', script_path]
+                result = self.tools._run_command(command_exec, timeout)
+                
+                if result['success']:
+                    # ✅ PARSER LA VRAIE SORTIE
+                    output = self._extract_real_command_output(result['stdout'], command)
+                    
+                    return {
+                        'success': True,
+                        'session_id': session_id,
+                        'command': command,
+                        'output': output,
+                        'raw_output': result['stdout']
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'session_id': session_id,
+                        'command': command,
+                        'error': result['stderr'],
+                        'raw_output': result['stdout']
+                    }
+                
+            finally:
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur exécution commande session {session_id}: {e}")
+            return {
+                'success': False,
+                'session_id': session_id,
+                'command': command,
+                'error': str(e)
+            }
+
+    def _extract_real_command_output(self, full_output: str, command: str) -> str:
+        """Extrait la vraie sortie de la commande - VERSION FINALE"""
+        lines = full_output.split('\n')
+        
+        # ✅ CHERCHER APRÈS "[*] exec: COMMANDE"
+        exec_pattern = f"[*] exec: {command}"
+        command_found = False
+        output_lines = []
+        
+        for line in lines:
+            line_stripped = line.strip()
+            
+            # ✅ Détecter le début de l'exécution
+            if exec_pattern in line:
+                command_found = True
+                continue
+            
+            # ✅ Détecter la fin (ligne suivante avec resource ou [*)
+            if command_found:
+                if (line_stripped.startswith('resource (') or 
+                    line_stripped.startswith('[*]') or 
+                    line_stripped.startswith('[-]') or
+                    not line_stripped):
+                    break
+                    
+                # ✅ C'est la vraie sortie !
+                output_lines.append(line_stripped)
+        
+        result = '\n'.join(output_lines).strip()
+        
+        # ✅ Si on a trouvé quelque chose, le retourner
+        if result:
+            logger.info(f"✅ Sortie extraite pour '{command}': {result}")
+            return result
+        else:
+            # ✅ Fallback : chercher juste après la commande
+            for i, line in enumerate(lines):
+                if command in line and "[*] exec:" in line:
+                    if i + 1 < len(lines):
+                        next_line = lines[i + 1].strip()
+                        if next_line and not next_line.startswith('[') and not next_line.startswith('resource'):
+                            return next_line
+            
+            return f"Commande '{command}' exécutée - vérifiez les logs pour plus de détails"
+
+
+    def _extract_command_output(self, full_output: str, command: str) -> str:
+        """Extrait la sortie réelle de la commande depuis la sortie Metasploit"""
+        lines = full_output.split('\n')
+        
+        # Chercher la ligne avec la commande exécutée
+        command_found = False
+        output_lines = []
+        
+        for line in lines:
+            line_clean = line.strip()
+            
+            # ✅ Détecter le début de l'output de la commande
+            if command in line_clean and ('meterpreter' in line_clean or 'shell' in line_clean):
+                command_found = True
+                continue
+            
+            # ✅ Détecter la fin (prompt suivant)
+            if command_found and ('meterpreter >' in line_clean or 'shell >' in line_clean or 'msf6 >' in line_clean):
+                break
+            
+            # ✅ Collecter les lignes de sortie
+            if command_found and line_clean and not line_clean.startswith('['):
+                output_lines.append(line_clean)
+        
+        result = '\n'.join(output_lines).strip()
+        return result if result else f"Commande '{command}' exécutée (pas de sortie visible)"
 
     def run_post_exploit_sysinfo(self, session_id: str) -> Dict[str, Any]:
         """Récupère les informations système via une session"""

@@ -16,13 +16,16 @@ class SessionManager:
         self.huntkit = HuntKitIntegration()
     
     def detect_and_register_sessions_from_output(self, output: str, task_id: str, user_id: int) -> List[Dict]:
-        """Détecte les sessions dans la sortie et les enregistre"""
+        """Détecte les sessions dans la sortie et les enregistre - VERSION CORRIGÉE"""
         sessions_detected = self.huntkit.metasploit.parse_sessions_from_output(output)
         registered_sessions = []
         
         for session_data in sessions_detected:
-            session_id = self.register_session(
-                session_id=session_data['session_id'],
+            # ✅ CORRECTION : Utiliser directement le session_id de Metasploit
+            metasploit_session_id = session_data['session_id']  # C'est déjà le bon ID MSF
+            
+            db_session_id = self.register_session(
+                session_id=metasploit_session_id,  # ✅ ID réel Metasploit
                 task_id=task_id,
                 target_ip=session_data['target_ip'],
                 target_port=session_data.get('target_port'),
@@ -30,19 +33,19 @@ class SessionManager:
                 user_id=user_id
             )
             
-            if session_id:
+            if db_session_id:
                 registered_sessions.append({
-                    'db_id': session_id,
-                    'metasploit_session_id': session_data['session_id'],
+                    'db_id': db_session_id,
+                    'metasploit_session_id': metasploit_session_id,  # ✅ Correct ID MSF
                     'target_ip': session_data['target_ip'],
                     'session_type': session_data['session_type']
                 })
                 
                 # Lancer automatiquement la post-exploitation
-                self.start_auto_post_exploitation(session_id)
+                self.start_auto_post_exploitation(db_session_id)
         
         return registered_sessions
-    
+
     def register_session(self, session_id: str, task_id: str, target_ip: str, 
                         target_port: int = None, session_type: str = 'shell',
                         platform: str = None, arch: str = None, user_id: int = None) -> Optional[int]:
@@ -112,18 +115,23 @@ class SessionManager:
         return base_actions
     
     def _execute_post_exploit_action(self, db_session_id: int, action_type: str, command: str):
-        """Exécute une action de post-exploitation"""
+        """Exécute une action de post-exploitation - VERSION CORRIGÉE ID"""
         try:
-            # Récupérer l'ID de session Metasploit
+            # ✅ CORRECTION CRITIQUE : Récupérer le bon session_id Metasploit
             session_info = self.get_session_info(db_session_id)
             if not session_info:
+                logger.error(f"❌ Session {db_session_id} non trouvée en base")
                 return
             
+            # ✅ CORRECTION : Le session_id en base EST l'ID Metasploit réel
             metasploit_session_id = session_info['session_id']
+            
+            logger.info(f"🔧 Exécution {action_type} sur session MSF #{metasploit_session_id} (DB ID: {db_session_id})")
             
             # Créer l'enregistrement d'action
             action_id = self._create_post_exploit_action(db_session_id, action_type, command)
             if not action_id:
+                logger.error(f"❌ Impossible de créer l'action {action_type}")
                 return
             
             # Marquer comme en cours
@@ -131,9 +139,9 @@ class SessionManager:
             
             start_time = time.time()
             
-            # Exécuter la commande
+            # ✅ CORRECTION : Utiliser le bon ID de session Metasploit
             result = self.huntkit.metasploit.execute_session_command(
-                metasploit_session_id, command
+                metasploit_session_id, command  # ✅ ID correct depuis la base
             )
             
             execution_time = int(time.time() - start_time)
@@ -146,18 +154,21 @@ class SessionManager:
                     raw_output=result.get('output'),
                     execution_time=execution_time
                 )
+                logger.info(f"✅ Action {action_type} terminée (session #{metasploit_session_id})")
             else:
                 self._update_post_exploit_action(
                     action_id, 'failed',
                     error_message=result.get('error'),
                     execution_time=execution_time
                 )
+                logger.error(f"❌ Action {action_type} échouée: {result.get('error')}")
                 
         except Exception as e:
             logger.error(f"❌ Erreur exécution action {action_type}: {e}")
             if 'action_id' in locals():
                 self._update_post_exploit_action(action_id, 'failed', error_message=str(e))
-    
+
+
     def _create_post_exploit_action(self, session_id: int, action_type: str, command: str) -> Optional[int]:
         """Crée un enregistrement d'action de post-exploitation"""
         try:

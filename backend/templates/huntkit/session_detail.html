@@ -1,0 +1,577 @@
+{% extends "base.html" %}
+{% block title %}Session {{ session_id }} - Post-Exploitation{% endblock %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2>🎯 Session Metasploit - Contrôle Manuel</h2>
+    <p class="text-muted">Contrôle interactif de la session #<code id="session-id">{{ session_id }}</code></p>
+
+    <!-- Informations de session -->
+    <div class="card mb-4" id="session-info-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>📊 Informations de la session</h5>
+            <div>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshSessionInfo()">
+                    🔄 Actualiser
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="closeSession()" id="close-session-btn">
+                    🔴 Fermer session
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="session-info-content">
+                <div class="text-center text-muted py-4">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Chargement des informations de session...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interface de commande -->
+    <div class="card mb-4" id="command-interface-card" style="display: none;">
+        <div class="card-header">
+            <h5>💻 Interface de commande</h5>
+        </div>
+        <div class="card-body">
+            
+            <!-- Sélection de commande rapide -->
+            <div class="row mb-3">
+                <div class="col-md-8">
+                    <label for="quick-commands" class="form-label">⚡ Commandes rapides</label>
+                    <select class="form-control" id="quick-commands" onchange="selectQuickCommand()">
+                        <option value="">Sélectionner une commande prédéfinie...</option>
+                        <option value="sysinfo">🖥️ sysinfo - Informations système</option>
+                        <option value="getuid">👤 getuid - Utilisateur actuel</option>
+                        <option value="pwd">📁 pwd - Répertoire actuel</option>
+                        <option value="ps">📋 ps - Processus en cours</option>
+                        <option value="ls">📂 ls - Lister fichiers</option>
+                        <option value="whoami">🔍 whoami - Identité</option>
+                        <option value="ifconfig">🌐 ifconfig - Configuration réseau</option>
+                        <option value="cat /etc/passwd">👥 cat /etc/passwd - Utilisateurs système</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-outline-info d-block w-100" onclick="showCommandHelp()">
+                        ❓ Aide commandes
+                    </button>
+                </div>
+            </div>
+
+            <!-- Zone de saisie de commande -->
+            <div class="mb-3">
+                <label for="custom-command" class="form-label">✏️ Commande personnalisée</label>
+                <div class="input-group">
+                    <input type="text" class="form-control font-monospace" id="custom-command" 
+                           placeholder="Entrez votre commande..." onkeypress="handleCommandKeypress(event)">
+                    <button class="btn btn-success" onclick="executeCommand()" id="execute-btn">
+                        🚀 Exécuter
+                    </button>
+                </div>
+                <div class="form-text">
+                    <small>💡 Appuyez sur Entrée pour exécuter rapidement</small>
+                </div>
+            </div>
+
+            <!-- Avertissement sécurité -->
+            <div class="alert alert-warning">
+                <strong>⚠️ Avertissement :</strong> 
+                Certaines commandes dangereuses sont interdites pour la sécurité. 
+                Utilisez cette interface de façon responsable.
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Historique des commandes et résultats -->
+    <div class="card mb-4" id="command-history-card" style="display: none;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>📝 Historique des commandes</h5>
+            <div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearHistory()">
+                    🗑️ Vider
+                </button>
+                <button class="btn btn-sm btn-outline-primary" onclick="exportHistory()">
+                    💾 Exporter
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="command-history" style="max-height: 500px; overflow-y: auto; background-color: #1a1a1a; color: #00ff00; padding: 20px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 14px;">
+                <div class="text-success">
+                    root@session# Webshell prêt - tapez vos commandes ci-dessus
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions post-exploitation automatiques -->
+    <div class="card mb-4" id="auto-actions-card" style="display: none;">
+        <div class="card-header">
+            <h5>🤖 Actions post-exploitation automatiques</h5>
+        </div>
+        <div class="card-body">
+            <div id="auto-actions-content">
+                <!-- Contenu chargé dynamiquement -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="mt-4">
+        <a href="/huntkit/sessions" class="btn btn-outline-secondary">
+            ⬅️ Retour aux sessions
+        </a>
+        <a href="/huntkit/exploit" class="btn btn-outline-success">
+            🎯 Nouvelle exploitation
+        </a>
+    </div>
+</div>
+
+<script>
+const sessionId = {{ session_id }};
+let commandHistory = [];
+let sessionInfo = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🎯 Page session détail chargée pour:', sessionId);
+    refreshSessionInfo();
+    startPeriodicRefresh();
+});
+
+function refreshSessionInfo() {
+    console.log('🔄 Actualisation infos session...');
+    
+    fetch(`/huntkit/api/sessions/${sessionId}/info`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                sessionInfo = data.session;
+                updateSessionDisplay(data);
+                loadAutoActions(data.actions);
+            } else {
+                showError('Erreur: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erreur récupération session:', error);
+            showError('Erreur de connexion');
+        });
+}
+
+function updateSessionDisplay(data) {
+    const session = data.session;
+    const infoContent = document.getElementById('session-info-content');
+    
+    const statusBadge = session.status === 'active' ? 
+        '<span class="badge bg-success">🟢 ACTIVE</span>' : 
+        '<span class="badge bg-secondary">⚫ FERMÉE</span>';
+    
+    const postExploitBadge = session.auto_post_exploit_completed ?
+        '<span class="badge bg-success">✅ TERMINÉ</span>' :
+        '<span class="badge bg-warning">🔄 EN COURS</span>';
+    
+    const manualControlBadge = session.manual_takeover_enabled ?
+        '<span class="badge bg-primary">✅ DISPONIBLE</span>' :
+        '<span class="badge bg-secondary">⏳ EN ATTENTE</span>';
+    
+    infoContent.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card border-info">
+                    <div class="card-body">
+                        <h6>🎯 Informations de base</h6>
+                        <p><strong>Session ID:</strong> ${session.session_id}</p>
+                        <p><strong>Type:</strong> ${session.session_type.toUpperCase()}</p>
+                        <p><strong>Statut:</strong> ${statusBadge}</p>
+                        <p><strong>Cible:</strong> ${session.target_ip}:${session.target_port || 'N/A'}</p>
+                        <p><strong>Plateforme:</strong> ${session.platform || 'Détection en cours...'}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-success">
+                    <div class="card-body">
+                        <h6>🤖 État post-exploitation</h6>
+                        <p><strong>Post-exploit auto:</strong> ${postExploitBadge}</p>
+                        <p><strong>Contrôle manuel:</strong> ${manualControlBadge}</p>
+                        <p><strong>Ouvert le:</strong> ${formatDate(session.opened_at)}</p>
+                        <p><strong>Dernière activité:</strong> ${formatDate(session.last_interaction)}</p>
+                        <p><strong>Utilisateur:</strong> ${session.username || 'Système'}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Activer l'interface de commande si contrôle manuel disponible
+    if (session.manual_takeover_enabled && session.status === 'active') {
+        document.getElementById('command-interface-card').style.display = 'block';
+        document.getElementById('command-history-card').style.display = 'block';
+        
+        if (commandHistory.length === 0) {
+            addCommandToHistory('root@session# Contrôle manuel activé - prêt à recevoir des commandes', 'system');
+        }
+    } else {
+        document.getElementById('command-interface-card').style.display = 'none';
+        
+        if (!session.manual_takeover_enabled) {
+            infoContent.innerHTML += `
+                <div class="alert alert-info mt-3">
+                    <h6>⏳ Post-exploitation en cours</h6>
+                    <p>Le contrôle manuel sera disponible une fois la post-exploitation automatique terminée.</p>
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Patientez quelques instants...
+                </div>
+            `;
+        }
+    }
+}
+
+function loadAutoActions(actions) {
+    if (!actions || actions.length === 0) {
+        document.getElementById('auto-actions-card').style.display = 'none';
+        return;
+    }
+    
+    document.getElementById('auto-actions-card').style.display = 'block';
+    const content = document.getElementById('auto-actions-content');
+    
+    let html = `
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Commande</th>
+                        <th>Statut</th>
+                        <th>Durée</th>
+                        <th>Résultat</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    actions.forEach(action => {
+        const statusBadge = getActionStatusBadge(action.status);
+        const duration = action.execution_time ? `${action.execution_time}s` : 'N/A';
+        
+        html += `
+            <tr>
+                <td><strong>${action.action_type}</strong></td>
+                <td><code>${action.command_executed}</code></td>
+                <td>${statusBadge}</td>
+                <td>${duration}</td>
+                <td>
+                    ${action.status === 'completed' ? 
+                        `<button class="btn btn-sm btn-outline-info" onclick="showActionResult(${action.id})">👁️ Voir</button>` :
+                        '<small class="text-muted">En attente</small>'
+                    }
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table></div>';
+    content.innerHTML = html;
+}
+
+function getActionStatusBadge(status) {
+    switch(status) {
+        case 'completed':
+            return '<span class="badge bg-success">✅ Terminé</span>';
+        case 'failed':
+            return '<span class="badge bg-danger">❌ Échoué</span>';
+        case 'running':
+            return '<span class="badge bg-warning">🔄 En cours</span>';
+        default:
+            return '<span class="badge bg-secondary">⏳ En attente</span>';
+    }
+}
+
+function selectQuickCommand() {
+    const select = document.getElementById('quick-commands');
+    const commandInput = document.getElementById('custom-command');
+    
+    if (select.value) {
+        commandInput.value = select.value;
+        select.value = ''; // Reset selection
+        commandInput.focus();
+    }
+}
+
+function handleCommandKeypress(event) {
+    if (event.key === 'Enter') {
+        executeCommand();
+    }
+}
+
+function executeCommand() {
+    const commandInput = document.getElementById('custom-command');
+    const command = commandInput.value.trim();
+    
+    if (!command) {
+        alert('⚠️ Veuillez entrer une commande');
+        return;
+    }
+    
+    // Vérifier les commandes interdites côté client
+    const forbiddenCommands = ['rm -rf', 'format', 'del /s', 'shutdown', 'reboot'];
+    if (forbiddenCommands.some(forbidden => command.toLowerCase().includes(forbidden))) {
+        alert('🚫 Cette commande est interdite pour des raisons de sécurité');
+        return;
+    }
+    
+    // Désactiver le bouton pendant l'exécution
+    const executeBtn = document.getElementById('execute-btn');
+    executeBtn.disabled = true;
+    executeBtn.innerHTML = '🔄 Exécution...';
+    
+    // Ajouter la commande à l'historique immédiatement
+    addCommandToHistory(`root@session# ${command}`, 'command');
+    
+    // Exécuter la commande
+    fetch(`/huntkit/api/sessions/${sessionId}/execute`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            command: command
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Afficher le résultat
+            const output = data.result.output || 'Commande exécutée (pas de sortie)';
+            addCommandToHistory(output, 'output');
+            
+            // Vider le champ de commande
+            commandInput.value = '';
+            
+            showNotification('✅ Commande exécutée avec succès', 'success');
+        } else {
+            addCommandToHistory(`ERREUR: ${data.error}`, 'error');
+            showNotification('❌ Erreur: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('❌ Erreur exécution commande:', error);
+        addCommandToHistory(`ERREUR RÉSEAU: ${error.message}`, 'error');
+        showNotification('❌ Erreur de connexion', 'danger');
+    })
+    .finally(() => {
+        // Réactiver le bouton
+        executeBtn.disabled = false;
+        executeBtn.innerHTML = '🚀 Exécuter';
+        commandInput.focus();
+    });
+}
+
+function addCommandToHistory(text, type) {
+    const historyDiv = document.getElementById('command-history');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    const entry = document.createElement('div');
+    entry.className = 'mb-2';
+    
+    switch(type) {
+        case 'command':
+            entry.innerHTML = `<span class="text-warning">[${timestamp}]</span> <span class="text-info">${text}</span>`;
+            break;
+        case 'output':
+            entry.innerHTML = `<span class="text-success">${text}</span>`;
+            break;
+        case 'error':
+            entry.innerHTML = `<span class="text-danger">${text}</span>`;
+            break;
+        case 'system':
+            entry.innerHTML = `<span class="text-muted">[${timestamp}] ${text}</span>`;
+            break;
+        default:
+            entry.innerHTML = `<span class="text-light">${text}</span>`;
+    }
+    
+    commandHistory.push({
+        timestamp,
+        text,
+        type
+    });
+    
+    historyDiv.appendChild(entry);
+    historyDiv.scrollTop = historyDiv.scrollHeight; // Auto-scroll
+}
+
+function clearHistory() {
+    if (confirm('Voulez-vous vraiment vider l\'historique des commandes ?')) {
+        const historyDiv = document.getElementById('command-history');
+        historyDiv.innerHTML = '<div class="text-success">root@session# Historique vidé</div>';
+        commandHistory = [];
+    }
+}
+
+function exportHistory() {
+    if (commandHistory.length === 0) {
+        alert('Aucun historique à exporter');
+        return;
+    }
+    
+    const content = commandHistory.map(entry => 
+        `[${entry.timestamp}] ${entry.text}`
+    ).join('\n');
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadTextFile(content, `session-${sessionId}-history-${timestamp}.txt`);
+}
+
+function downloadTextFile(content, filename) {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function showCommandHelp() {
+    alert(`💡 Aide commandes:
+
+🖥️ INFORMATIONS SYSTÈME:
+• sysinfo - Informations détaillées du système
+• whoami - Utilisateur actuel
+• pwd - Répertoire de travail actuel
+• ifconfig - Configuration réseau
+
+📁 NAVIGATION FICHIERS:
+• ls - Lister les fichiers
+• cat /etc/passwd - Lire un fichier
+• find / -name "*.conf" - Rechercher des fichiers
+
+📋 PROCESSUS ET SERVICES:
+• ps - Processus en cours
+• netstat - Connexions réseau
+• top - Activité système
+
+⚠️ SÉCURITÉ:
+Les commandes destructives sont automatiquement bloquées.
+Utilisez cette interface de façon responsable.`);
+}
+
+function closeSession() {
+    if (!confirm('⚠️ Êtes-vous sûr de vouloir fermer cette session ?\n\nCette action est irréversible.')) {
+        return;
+    }
+    
+    fetch(`/huntkit/api/sessions/${sessionId}/close`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('✅ Session fermée avec succès', 'success');
+            
+            // Rediriger vers la liste des sessions après 2 secondes
+            setTimeout(() => {
+                window.location.href = '/huntkit/sessions';
+            }, 2000);
+        } else {
+            showNotification('❌ Erreur: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('❌ Erreur fermeture session:', error);
+        showNotification('❌ Erreur de connexion', 'danger');
+    });
+}
+
+function showActionResult(actionId) {
+    // Récupérer et afficher le résultat d'une action automatique
+    alert('🔍 Affichage détaillé des résultats - À implémenter');
+}
+
+function showError(message) {
+    const infoContent = document.getElementById('session-info-content');
+    infoContent.innerHTML = `
+        <div class="alert alert-danger">
+            <h6>❌ Erreur</h6>
+            <p>${message}</p>
+            <button class="btn btn-outline-primary" onclick="refreshSessionInfo()">🔄 Réessayer</button>
+        </div>
+    `;
+}
+
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    
+    const date = new Date(dateString);
+    return date.toLocaleString('fr-FR');
+}
+
+function showNotification(message, type) {
+    if (typeof window.showNotification === 'function') {
+        window.showNotification(message, type);
+    } else {
+        console.log(message);
+    }
+}
+
+function startPeriodicRefresh() {
+    // Actualiser les infos toutes les 30 secondes si session active
+    setInterval(() => {
+        if (sessionInfo && sessionInfo.status === 'active') {
+            refreshSessionInfo();
+        }
+    }, 30000);
+}
+
+// Nettoyer au déchargement de la page
+window.addEventListener('beforeunload', function() {
+    // Pas de nettoyage spécial nécessaire
+});
+</script>
+
+<style>
+#command-history {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.card {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-radius: 8px;
+}
+
+.font-monospace {
+    font-family: 'Courier New', monospace !important;
+}
+
+#custom-command {
+    background-color: #f8f9fa;
+    border: 2px solid #dee2e6;
+}
+
+#custom-command:focus {
+    background-color: white;
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.alert {
+    border-radius: 6px;
+}
+
+.btn {
+    border-radius: 6px;
+}
+</style>
+
+{% endblock %}
