@@ -1,4 +1,5 @@
 import os
+import socket
 import subprocess
 import json
 import logging
@@ -9,6 +10,28 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+def print_env_debug():
+    print("\n=== DEBUG ENV (avant msfconsole) ===")
+    print("hostname:", subprocess.getoutput("hostname"))
+    print("whoami:", subprocess.getoutput("whoami"))
+    print("pwd:", os.getcwd())
+    print("which msfconsole:", subprocess.getoutput("which msfconsole"))
+    print("PATH:", os.environ.get("PATH"))
+    print("ip a:\n", subprocess.getoutput("ip a"))
+    def get_ip(target="8.8.8.8"):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect((target, 80))
+            ip = s.getsockname()[0]
+        except Exception:
+            ip = "127.0.0.1"
+        finally:
+            s.close()
+        return ip
+    print("IP déterminée dynamiquement:", get_ip())
+    print("=== END DEBUG ENV ===\n")
+
 
 class HuntKitToolsManager:
     """Gestionnaire centralisé pour tous les outils HuntKit"""
@@ -960,11 +983,11 @@ set RPORT {port}
 """
         
         # ✅ CORRECTION UNIQUE: LHOST sur toutes interfaces pour éviter l'erreur de bind
-        script += f"set LHOST 172.20.0.2\n"
+        script += f"set LHOST 172.20.0.3\n"
         script += f"set LPORT {options.get('LPORT', '4444')}\n"
         
         # ✅ AMÉLIORATION: Log pour debug
-        logger.info(f"🔧 LHOST configuré sur 0.0.0.0")
+        logger.info(f"🔧 LHOST configuré sur 172.20.0.3")
         logger.info(f"🔧 LPORT configuré à: {options.get('LPORT', '4444')}")
         
         # ✅ GESTION SPÉCIALE POUR SSH EXPLOITS
@@ -1021,7 +1044,10 @@ check
 show options
 exploit -z
 sessions -l
+exit
 """
+
+        print_env_debug()
         return script
 
 
