@@ -1084,10 +1084,11 @@ exit
         return script
     
     def _parse_exploit_output(self, output: str, module: str) -> Dict[str, Any]:
-        """Parse la sortie d'un exploit Metasploit - VERSION CORRIGÉE"""
+        """Parse la sortie d'un exploit Metasploit - VERSION AVEC DÉTECTION SESSIONS"""
         result = {
             'exploit_attempted': True,
             'sessions_opened': 0,
+            'sessions_detected': [],  # ✅ NOUVEAU: Liste des sessions détectées
             'vulnerabilities_found': [],
             'errors': [],
             'status': 'unknown'
@@ -1104,13 +1105,37 @@ exit
             line_lower = line.lower().strip()
             line_clean = line.strip()
             
-            # ✅ CORRECTION 1: Détecter les sessions RÉELLEMENT ouvertes
-            if 'meterpreter session' in line_lower and 'opened' in line_lower:
+            # ✅ NOUVELLE DÉTECTION: Parser les sessions ouvertes avec détails
+            session_match = re.search(r'(\w+)\s+session\s+(\d+)\s+opened\s+\(([^)]+)\)', line, re.IGNORECASE)
+            if session_match:
+                session_type = session_match.group(1).lower()
+                session_id = session_match.group(2)
+                connection_info = session_match.group(3)
+                
+                # Parser les informations de connexion
+                session_info = {
+                    'session_id': session_id,
+                    'session_type': session_type,
+                    'connection_info': connection_info,
+                    'raw_line': line_clean
+                }
+                
+                # Extraire IP et port cible si possible
+                if '->' in connection_info:
+                    parts = connection_info.split('->')
+                    if len(parts) == 2:
+                        target_info = parts[1].strip()
+                        if ':' in target_info:
+                            session_info['target_ip'] = target_info.split(':')[0]
+                            session_info['target_port'] = target_info.split(':')[1]
+                
+                result['sessions_detected'].append(session_info)
                 sessions_count += 1
                 exploit_successful = True
-                logger.info(f"🎯 Session Meterpreter détectée: {line_clean}")
+                
+                logger.info(f"🎯 Session détectée: {session_type} #{session_id} - {connection_info}")
             
-            # ✅ CORRECTION 2: Vérifier la liste des sessions actives
+            # ✅ CORRECTION 2: Vérifier la liste des sessions actives  
             elif line.startswith('  ') and 'meterpreter' in line_lower:
                 # Format: "  1  meterpreter x86/linux  ..."
                 sessions_count += 1
@@ -1151,11 +1176,17 @@ exit
         if sessions_count > 0:
             result['status'] = 'exploited'
             logger.info(f"✅ Exploitation réussie: {sessions_count} session(s)")
+            
+            # ✅ NOUVEAU: Résumé des sessions pour affichage
+            result['sessions_summary'] = {
+                'total': sessions_count,
+                'types': list(set([s['session_type'] for s in result['sessions_detected']])),
+                'targets': list(set([s.get('target_ip', 'unknown') for s in result['sessions_detected']]))
+            }
+            
         elif result['status'] == 'not_vulnerable':
-            # Déjà défini ci-dessus
             logger.info("🚫 Cible confirmée non vulnérable")
         elif result['status'] == 'exploit_failed':
-            # Déjà défini ci-dessus
             logger.info("❌ Exploitation tentée mais échouée")
         elif target_vulnerable:
             result['status'] = 'vulnerable'
@@ -1169,6 +1200,7 @@ exit
         
         logger.info(f"📊 Résumé parsing: {sessions_count} sessions, statut: {result['status']}")
         return result
+
 
 
     def _parse_auxiliary_output(self, output: str, module: str) -> Dict[str, Any]:
@@ -1323,6 +1355,169 @@ exit
         
         return exploits
 
+    def parse_sessions_from_output(self, output: str) -> List[Dict[str, Any]]:
+        """Parse la sortie Metasploit pour détecter les sessions ouvertes"""
+        sessions = []
+        lines = output.split('\n')
+        
+        for line in lines:
+            line_lower = line.lower().strip()
+            
+            # Format: "Meterpreter session 1 opened (172.20.0.2:4444 -> 172.20.0.10:1234)"
+            session_match = re.search(r'(\w+)\s+session\s+(\d+)\s+opened\s+\(([^)]+)\)', line, re.IGNORECASE)
+            if session_match:
+                session_type = session_match.group(1).lower()
+                session_id = session_match.group(2)
+                connection_info = session_match.group(3)
+                
+                # Parser les IPs : "172.20.0.2:4444 -> 172.20.0.10:1234"
+                if '->' in connection_info:
+                    parts = connection_info.split('->')
+                    if len(parts) == 2:
+                        target_info = parts[1].strip()
+                        if ':' in target_info:
+                            target_ip = target_info.split(':')[0]
+                            target_port = target_info.split(':')[1]
+                        else:
+                            target_ip = target_info
+                            target_port = None
+                        
+                        sessions.append({
+                            'session_id': session_id,
+                            'session_type': session_type,
+                            'target_ip': target_ip,
+                            'target_port': int(target_port) if target_port else None,
+                            'connection_info': connection_info,
+                            'detected_at': datetime.now().isoformat()
+                        })
+        
+        return sessions
+
+    def get_active_sessions(self, timeout: int = 60) -> Dict[str, Any]:
+        """Récupère la liste des sessions actives"""
+        try:
+            # Script pour lister les sessions
+            commands = """
+sessions -l
+exit
+"""
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.rc', delete=False) as f:
+                f.write(commands)
+                script_path = f.name
+            
+            try:
+                command = [self.msf_path, '-q', '-r', script_path]
+                result = self.tools._run_command(command, timeout)
+                
+                sessions = self._parse_sessions_list(result['stdout'])
+                
+                return {
+                    'success': True,
+                    'sessions': sessions,
+                    'total_sessions': len(sessions)
+                }
+                
+            finally:
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération sessions: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'sessions': []
+            }
+
+    def _parse_sessions_list(self, output: str) -> List[Dict[str, Any]]:
+        """Parse la sortie de 'sessions -l'"""
+        sessions = []
+        lines = output.split('\n')
+        
+        for line in lines:
+            # Format: "  1  meterpreter x86/linux  172.20.0.10:1234  172.20.0.10"
+            session_match = re.match(r'\s*(\d+)\s+(\w+)\s+([\w/]+)\s+([\d.:]+)\s+([\d.]+)', line)
+            if session_match:
+                sessions.append({
+                    'session_id': session_match.group(1),
+                    'session_type': session_match.group(2),
+                    'platform': session_match.group(3),
+                    'connection': session_match.group(4),
+                    'target_ip': session_match.group(5),
+                    'status': 'active'
+                })
+        
+        return sessions
+
+    def execute_session_command(self, session_id: str, command: str, timeout: int = 300) -> Dict[str, Any]:
+        """Execute une commande sur une session spécifique"""
+        try:
+            # Script pour exécuter une commande sur une session
+            commands = f"""
+sessions -i {session_id}
+{command}
+background
+exit
+"""
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.rc', delete=False) as f:
+                f.write(commands)
+                script_path = f.name
+            
+            try:
+                command_exec = [self.msf_path, '-q', '-r', script_path]
+                result = self.tools._run_command(command_exec, timeout)
+                
+                return {
+                    'success': result['success'],
+                    'session_id': session_id,
+                    'command': command,
+                    'output': result['stdout'],
+                    'error': result['stderr'] if not result['success'] else None
+                }
+                
+            finally:
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur exécution commande session {session_id}: {e}")
+            return {
+                'success': False,
+                'session_id': session_id,
+                'command': command,
+                'error': str(e)
+            }
+
+    def run_post_exploit_sysinfo(self, session_id: str) -> Dict[str, Any]:
+        """Récupère les informations système via une session"""
+        return self.execute_session_command(session_id, 'sysinfo')
+
+    def run_post_exploit_getuid(self, session_id: str) -> Dict[str, Any]:
+        """Récupère l'utilisateur actuel"""
+        return self.execute_session_command(session_id, 'getuid')
+
+    def run_post_exploit_ps(self, session_id: str) -> Dict[str, Any]:
+        """Liste les processus"""
+        return self.execute_session_command(session_id, 'ps')
+
+    def run_post_exploit_hashdump(self, session_id: str) -> Dict[str, Any]:
+        """Tente un hashdump (meterpreter uniquement)"""
+        return self.execute_session_command(session_id, 'hashdump', timeout=600)
+
+    def run_post_exploit_network_scan(self, session_id: str, subnet: str = None) -> Dict[str, Any]:
+        """Lance un scan réseau depuis la session"""
+        if not subnet:
+            subnet = "192.168.1.0/24"  # Par défaut
+        
+        # Commande adaptée selon le type de session
+        command = f"run post/multi/gather/ping_sweep RHOSTS={subnet}"
+        return self.execute_session_command(session_id, command, timeout=900)
 
 # ===== CLASSE PRINCIPALE =====
 class HuntKitIntegration:

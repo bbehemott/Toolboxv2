@@ -39,11 +39,11 @@ class DatabaseManager:
                 conn.close()
     
     def init_database(self):
-        """Initialise les tables PostgreSQL"""
+        """Initialise les tables PostgreSQL - VERSION AVEC SESSIONS"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Table utilisateurs
+            # Tables existantes (garder le code existant)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
@@ -56,7 +56,6 @@ class DatabaseManager:
                 )
             ''')
             
-            # Table tâches
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS tasks (
                     id SERIAL PRIMARY KEY,
@@ -76,7 +75,6 @@ class DatabaseManager:
                 )
             ''')
             
-            # Table résultats de modules
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS module_results (
                     id SERIAL PRIMARY KEY,
@@ -96,18 +94,346 @@ class DatabaseManager:
                 )
             ''')
             
-            # Index pour performances
+            # ✅ NOUVELLES TABLES pour sessions Metasploit
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS metasploit_sessions (
+                    id SERIAL PRIMARY KEY,
+                    session_id VARCHAR(50) NOT NULL,
+                    task_id VARCHAR(255) REFERENCES tasks(task_id),
+                    target_ip VARCHAR(255) NOT NULL,
+                    target_port INTEGER,
+                    session_type VARCHAR(50) NOT NULL,
+                    platform VARCHAR(100),
+                    arch VARCHAR(50),
+                    status VARCHAR(20) DEFAULT 'active',
+                    opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    closed_at TIMESTAMP,
+                    last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    user_id INTEGER REFERENCES users(id),
+                    auto_post_exploit_completed BOOLEAN DEFAULT FALSE,
+                    manual_takeover_enabled BOOLEAN DEFAULT FALSE
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS post_exploit_actions (
+                    id SERIAL PRIMARY KEY,
+                    session_id INTEGER REFERENCES metasploit_sessions(id),
+                    action_type VARCHAR(50) NOT NULL,
+                    command_executed TEXT,
+                    result_data JSONB,
+                    raw_output TEXT,
+                    status VARCHAR(20) DEFAULT 'pending',
+                    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    execution_time INTEGER,
+                    error_message TEXT
+                )
+            ''')
+            
+            # Index existants (garder)
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_module_results_task_id ON module_results(task_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_module_results_module_name ON module_results(module_name)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_hidden ON tasks(hidden)')
             
+            # ✅ NOUVEAUX Index pour sessions
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_task_id ON metasploit_sessions(task_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_status ON metasploit_sessions(status)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON metasploit_sessions(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_post_exploit_session ON post_exploit_actions(session_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_post_exploit_status ON post_exploit_actions(status)')
+            
             conn.commit()
-            logger.info("✅ Base de données PostgreSQL initialisée")
-    
+            logger.info("✅ Base de données PostgreSQL initialisée avec support sessions")
+
     # ===== MÉTHODES MANQUANTES AJOUTÉES =====
     
+    def get_active_sessions(self, user_id: int = None) -> List[Dict]:
+        """Récupère les sessions Metasploit actives"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                
+                query = '''
+                    SELECT s.*, t.task_name, u.username
+                    FROM metasploit_sessions s
+                    LEFT JOIN tasks t ON s.task_id = t.task_id
+                    LEFT JOIN users u ON s.user_id = u.id
+                    WHERE s.status = 'active'
+                '''
+                params = []
+                
+                if user_id:
+                    query += ' AND s.user_id = %s'
+                    params.append(user_id)
+                
+                query += ' ORDER BY s.opened_at DESC'
+                
+                cursor.execute(query, params)
+                sessions = [dict(row) for row in cursor.fetchall()]
+                
+                logger.debug(f"🎯 {len(sessions)} sessions actives récupérées")
+                return sessions
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération sessions actives: {e}")
+            return []
+
+    def get_session_by_id(self, session_id: int) -> Optional[Dict]:
+        """Récupère une session par son ID"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute('''
+                    SELECT s.*, t.task_name, u.username
+                    FROM metasploit_sessions s
+                    LEFT JOIN tasks t ON s.task_id = t.task_id
+                    LEFT JOIN users u ON s.user_id = u.id
+                    WHERE s.id = %s
+                ''', (session_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    logger.debug(f"🎯 Session trouvée: {session_id}")
+                    return dict(row)
+                else:
+                    logger.warning(f"⚠️ Session non trouvée: {session_id}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération session {session_id}: {e}")
+            return None
+
+    def create_session(self, session_id: str, task_id: str, target_ip: str, 
+                      target_port: int = None, session_type: str = 'shell',
+                      platform: str = None, arch: str = None, user_id: int = None) -> Optional[int]:
+        """Crée une nouvelle session Metasploit"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO metasploit_sessions 
+                    (session_id, task_id, target_ip, target_port, session_type, platform, arch, user_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (session_id, task_id, target_ip, target_port, session_type, platform, arch, user_id))
+                
+                db_session_id = cursor.fetchone()[0]
+                conn.commit()
+                
+                logger.info(f"✅ Session créée: {session_id} -> DB ID {db_session_id}")
+                return db_session_id
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur création session: {e}")
+            return None
+
+    def update_session_status(self, session_id: int, status: str, 
+                             auto_post_exploit_completed: bool = None,
+                             manual_takeover_enabled: bool = None):
+        """Met à jour le statut d'une session"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                updates = ['status = %s', 'last_interaction = CURRENT_TIMESTAMP']
+                params = [status]
+                
+                if auto_post_exploit_completed is not None:
+                    updates.append('auto_post_exploit_completed = %s')
+                    params.append(auto_post_exploit_completed)
+                
+                if manual_takeover_enabled is not None:
+                    updates.append('manual_takeover_enabled = %s')
+                    params.append(manual_takeover_enabled)
+                
+                if status == 'closed':
+                    updates.append('closed_at = CURRENT_TIMESTAMP')
+                
+                query = f"UPDATE metasploit_sessions SET {', '.join(updates)} WHERE id = %s"
+                params.append(session_id)
+                
+                cursor.execute(query, params)
+                conn.commit()
+                
+                if cursor.rowcount > 0:
+                    logger.debug(f"🎯 Session {session_id} mise à jour: {status}")
+                else:
+                    logger.warning(f"⚠️ Session {session_id} non trouvée pour mise à jour")
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur mise à jour session {session_id}: {e}")
+
+    def create_post_exploit_action(self, session_id: int, action_type: str, 
+                                  command: str, user_id: int = None) -> Optional[int]:
+        """Crée une action de post-exploitation"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO post_exploit_actions 
+                    (session_id, action_type, command_executed, status)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id
+                ''', (session_id, action_type, command, 'pending'))
+                
+                action_id = cursor.fetchone()[0]
+                conn.commit()
+                
+                logger.debug(f"📋 Action créée: {action_type} -> ID {action_id}")
+                return action_id
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur création action: {e}")
+            return None
+
+    def update_post_exploit_action(self, action_id: int, status: str,
+                                  result_data: Dict = None, raw_output: str = None,
+                                  execution_time: int = None, error_message: str = None):
+        """Met à jour une action de post-exploitation"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                updates = ['status = %s']
+                params = [status]
+                
+                if result_data:
+                    updates.append('result_data = %s')
+                    params.append(json.dumps(result_data))
+                
+                if raw_output:
+                    updates.append('raw_output = %s')
+                    params.append(raw_output)
+                
+                if execution_time is not None:
+                    updates.append('execution_time = %s')
+                    params.append(execution_time)
+                
+                if error_message:
+                    updates.append('error_message = %s')
+                    params.append(error_message)
+                
+                if status in ['completed', 'failed']:
+                    updates.append('completed_at = CURRENT_TIMESTAMP')
+                
+                query = f"UPDATE post_exploit_actions SET {', '.join(updates)} WHERE id = %s"
+                params.append(action_id)
+                
+                cursor.execute(query, params)
+                conn.commit()
+                
+                logger.debug(f"📋 Action {action_id} mise à jour: {status}")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur mise à jour action {action_id}: {e}")
+
+    def get_session_actions(self, session_id: int) -> List[Dict]:
+        """Récupère toutes les actions d'une session"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute('''
+                    SELECT * FROM post_exploit_actions 
+                    WHERE session_id = %s 
+                    ORDER BY started_at ASC
+                ''', (session_id,))
+                
+                actions = [dict(row) for row in cursor.fetchall()]
+                logger.debug(f"📋 {len(actions)} actions récupérées pour session {session_id}")
+                return actions
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération actions session {session_id}: {e}")
+            return []
+
+    def get_sessions_statistics(self) -> Dict:
+        """Récupère les statistiques des sessions"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                
+                stats = {}
+                
+                # Statistiques sessions
+                cursor.execute('''
+                    SELECT status, COUNT(*) as count
+                    FROM metasploit_sessions
+                    GROUP BY status
+                ''')
+                session_stats = {row['status']: row['count'] for row in cursor.fetchall()}
+                stats['sessions'] = session_stats
+                
+                # Statistiques post-exploitation
+                cursor.execute('''
+                    SELECT action_type, status, COUNT(*) as count
+                    FROM post_exploit_actions
+                    GROUP BY action_type, status
+                ''')
+                action_stats = {}
+                for row in cursor.fetchall():
+                    action_type = row['action_type']
+                    if action_type not in action_stats:
+                        action_stats[action_type] = {}
+                    action_stats[action_type][row['status']] = row['count']
+                stats['post_exploit_actions'] = action_stats
+                
+                # Sessions par utilisateur
+                cursor.execute('''
+                    SELECT u.username, COUNT(s.id) as session_count
+                    FROM metasploit_sessions s
+                    JOIN users u ON s.user_id = u.id
+                    WHERE s.status = 'active'
+                    GROUP BY u.username
+                    ORDER BY session_count DESC
+                ''')
+                user_stats = {row['username']: row['session_count'] for row in cursor.fetchall()}
+                stats['sessions_by_user'] = user_stats
+                
+                logger.debug(f"📊 Statistiques sessions récupérées")
+                return stats
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération statistiques sessions: {e}")
+            return {}
+
+    def cleanup_old_sessions(self, days: int = 7) -> int:
+        """Nettoie les anciennes sessions fermées"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Supprimer d'abord les actions associées
+                cursor.execute('''
+                    DELETE FROM post_exploit_actions 
+                    WHERE session_id IN (
+                        SELECT id FROM metasploit_sessions 
+                        WHERE status = 'closed' 
+                        AND closed_at < CURRENT_TIMESTAMP - INTERVAL '%s days'
+                    )
+                ''', (days,))
+                actions_deleted = cursor.rowcount
+                
+                # Puis supprimer les sessions
+                cursor.execute('''
+                    DELETE FROM metasploit_sessions 
+                    WHERE status = 'closed' 
+                    AND closed_at < CURRENT_TIMESTAMP - INTERVAL '%s days'
+                ''', (days,))
+                sessions_deleted = cursor.rowcount
+                
+                conn.commit()
+                
+                logger.info(f"🧹 Sessions nettoyées: {sessions_deleted} sessions + {actions_deleted} actions (>{days} jours)")
+                return sessions_deleted
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur nettoyage sessions: {e}")
+            return 0
+
+
     def hide_task(self, task_id: str) -> bool:
         """Masque une tâche de l'historique"""
         try:

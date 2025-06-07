@@ -1,5 +1,5 @@
 from flask import Blueprint, request, render_template, session, current_app, jsonify
-from auth import login_required, pentester_required
+from auth import login_required, pentester_required, admin_required
 from services.task_manager import TaskManager
 import logging
 import re
@@ -33,6 +33,18 @@ def brute_force_page():
 def exploit_page():
     """Page d'exploitation Metasploit"""
     return render_template('huntkit/exploit.html')
+
+@huntkit_bp.route('/sessions')
+@login_required
+def sessions_page():
+    """Page de gestion des sessions actives"""
+    return render_template('huntkit/sessions.html')
+
+@huntkit_bp.route('/sessions/<int:session_id>')
+@login_required
+def session_detail_page(session_id):
+    """Page de détail d'une session avec webshell"""
+    return render_template('huntkit/session_detail.html', session_id=session_id)
 
 @huntkit_bp.route('/full-pentest')
 @login_required
@@ -363,11 +375,334 @@ def api_start_metasploit_exploitation():
             'error': str(e)
         }, 500
 
-# ===== SUPPRESSION DES ENDPOINTS INUTILES =====
-# ❌ SUPPRIMÉ: api_start_metasploit_search (page "Recherche d'exploits" supprimée)
-# ❌ SUPPRIMÉ: api_start_metasploit_test (page "Test Framework" supprimée)
-# ❌ SUPPRIMÉ: api_metasploit_info (fonctionnalité test supprimée)
-# ❌ SUPPRIMÉ: api_metasploit_popular_modules (page recherche supprimée)
+
+@huntkit_bp.route('/api/sessions/active')
+@login_required
+def api_active_sessions():
+    """API pour récupérer les sessions actives"""
+    try:
+        from services.session_manager import SessionManager
+        session_manager = SessionManager(current_app.db)
+        
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+        
+        # Admin voit toutes les sessions, autres seulement les leurs
+        if user_role == 'admin':
+            sessions = session_manager.get_active_sessions()
+        else:
+            sessions = session_manager.get_active_sessions(user_id=user_id)
+        
+        return {
+            'success': True,
+            'sessions': sessions,
+            'total': len(sessions)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur récupération sessions actives: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+@huntkit_bp.route('/api/sessions/<int:session_id>/info')
+@login_required
+def api_session_info(session_id):
+    """API pour récupérer les détails d'une session"""
+    try:
+        from services.session_manager import SessionManager
+        session_manager = SessionManager(current_app.db)
+        
+        # Vérifier l'accès utilisateur
+        session_info = session_manager.get_session_info(session_id)
+        if not session_info:
+            return {
+                'success': False,
+                'error': 'Session non trouvée'
+            }, 404
+        
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+        
+        if user_role != 'admin' and session_info.get('user_id') != user_id:
+            return {
+                'success': False,
+                'error': 'Accès refusé'
+            }, 403
+        
+        # Récupérer les actions de post-exploitation
+        actions = session_manager.get_session_actions(session_id)
+        
+        return {
+            'success': True,
+            'session': session_info,
+            'actions': actions,
+            'can_take_control': session_info.get('manual_takeover_enabled', False)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur info session {session_id}: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+@huntkit_bp.route('/api/sessions/<int:session_id>/execute', methods=['POST'])
+@login_required
+def api_session_execute_command(session_id):
+    """API pour exécuter une commande sur une session"""
+    try:
+        from services.session_manager import SessionManager
+        session_manager = SessionManager(current_app.db)
+        
+        # Vérifier l'accès utilisateur
+        session_info = session_manager.get_session_info(session_id)
+        if not session_info:
+            return {
+                'success': False,
+                'error': 'Session non trouvée'
+            }, 404
+        
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+        
+        if user_role != 'admin' and session_info.get('user_id') != user_id:
+            return {
+                'success': False,
+                'error': 'Accès refusé'
+            }, 403
+        
+        # Vérifier que la prise de contrôle manuelle est activée
+        if not session_info.get('manual_takeover_enabled', False):
+            return {
+                'success': False,
+                'error': 'Prise de contrôle manuelle non encore activée'
+            }, 400
+        
+        data = request.get_json()
+        command = data.get('command', '').strip()
+        
+        if not command:
+            return {
+                'success': False,
+                'error': 'Commande requise'
+            }, 400
+        
+        # Commandes interdites pour sécurité
+        forbidden_commands = ['rm -rf', 'format', 'del /s', 'shutdown', 'reboot']
+        if any(forbidden in command.lower() for forbidden in forbidden_commands):
+            return {
+                'success': False,
+                'error': 'Commande interdite pour sécurité'
+            }, 400
+        
+        # Exécuter la commande
+        from core.huntkit_tools import HuntKitIntegration
+        huntkit = HuntKitIntegration()
+        
+        result = huntkit.metasploit.execute_session_command(
+            session_info['session_id'], command
+        )
+        
+        # Enregistrer la commande manuelle
+        action_id = session_manager._create_post_exploit_action(
+            session_id, 'manual_command', command
+        )
+        
+        if action_id:
+            session_manager._update_post_exploit_action(
+                action_id, 'completed' if result['success'] else 'failed',
+                result_data=result,
+                raw_output=result.get('output'),
+                error_message=result.get('error')
+            )
+        
+        return {
+            'success': True,
+            'command': command,
+            'result': result
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur exécution commande session {session_id}: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
+@huntkit_bp.route('/api/sessions/<int:session_id>/close', methods=['POST'])
+@login_required
+def api_close_session(session_id):
+    """API pour fermer une session"""
+    try:
+        from services.session_manager import SessionManager
+        session_manager = SessionManager(current_app.db)
+        
+        # Vérifier l'accès utilisateur
+        session_info = session_manager.get_session_info(session_id)
+        if not session_info:
+            return {
+                'success': False,
+                'error': 'Session non trouvée'
+            }, 404
+        
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+        
+        if user_role != 'admin' and session_info.get('user_id') != user_id:
+            return {
+                'success': False,
+                'error': 'Accès refusé'
+            }, 403
+        
+        # Fermer la session en base
+        current_app.db.update_session_status(session_id, 'closed')
+        
+        # Optionnel: Tenter de fermer dans Metasploit aussi
+        try:
+            from core.huntkit_tools import HuntKitIntegration
+            huntkit = HuntKitIntegration()
+            huntkit.metasploit.execute_session_command(
+                session_info['session_id'], 'exit'
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de fermer session Metasploit: {e}")
+        
+        logger.info(f"🔴 Session {session_id} fermée par utilisateur {user_id}")
+        
+        return {
+            'success': True,
+            'message': 'Session fermée avec succès'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur fermeture session {session_id}: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+@huntkit_bp.route('/api/sessions/sync', methods=['POST'])
+@login_required
+def api_sync_metasploit_sessions():
+    """API pour synchroniser avec les sessions Metasploit actives"""
+    try:
+        from core.huntkit_tools import HuntKitIntegration
+        from services.session_manager import SessionManager
+        
+        huntkit = HuntKitIntegration()
+        session_manager = SessionManager(current_app.db)
+        
+        # Récupérer les sessions actives depuis Metasploit
+        msf_sessions = huntkit.metasploit.get_active_sessions()
+        
+        if not msf_sessions['success']:
+            return {
+                'success': False,
+                'error': f"Erreur Metasploit: {msf_sessions.get('error', 'Inconnu')}"
+            }, 500
+        
+        # Synchroniser avec la base
+        synced_count = 0
+        new_sessions = []
+        
+        for msf_session in msf_sessions['sessions']:
+            # Vérifier si cette session existe déjà en base
+            existing = current_app.db.get_connection()
+            with existing as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id FROM metasploit_sessions 
+                    WHERE session_id = %s AND status = 'active'
+                ''', (msf_session['session_id'],))
+                
+                if not cursor.fetchone():
+                    # Nouvelle session trouvée
+                    db_session_id = session_manager.register_session(
+                        session_id=msf_session['session_id'],
+                        task_id=None,  # Session externe
+                        target_ip=msf_session.get('target_ip', 'unknown'),
+                        target_port=None,
+                        session_type=msf_session['session_type'],
+                        platform=msf_session.get('platform'),
+                        user_id=session.get('user_id')
+                    )
+                    
+                    if db_session_id:
+                        new_sessions.append({
+                            'db_id': db_session_id,
+                            'session_id': msf_session['session_id'],
+                            'session_type': msf_session['session_type']
+                        })
+                        synced_count += 1
+        
+        return {
+            'success': True,
+            'message': f'Synchronisation terminée: {synced_count} nouvelle(s) session(s)',
+            'synced_count': synced_count,
+            'new_sessions': new_sessions,
+            'total_msf_sessions': len(msf_sessions['sessions'])
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur synchronisation Metasploit: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+@huntkit_bp.route('/api/sessions/statistics')
+@login_required
+def api_sessions_statistics():
+    """API pour les statistiques des sessions"""
+    try:
+        stats = current_app.db.get_sessions_statistics()
+        
+        return {
+            'success': True,
+            'statistics': stats
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur statistiques sessions: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+@huntkit_bp.route('/api/sessions/cleanup', methods=['POST'])
+@admin_required
+def api_cleanup_old_sessions():
+    """API pour nettoyer les anciennes sessions (admin seulement)"""
+    try:
+        data = request.get_json() if request.is_json else {}
+        days = data.get('days', 7)
+        
+        if not isinstance(days, (int, float)) or days < 0:
+            return {
+                'success': False,
+                'error': 'Paramètre days invalide'
+            }, 400
+        
+        cleaned_count = current_app.db.cleanup_old_sessions(int(days))
+        
+        return {
+            'success': True,
+            'message': f'Nettoyage terminé: {cleaned_count} session(s) supprimée(s)',
+            'cleaned_count': cleaned_count,
+            'days': days
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur nettoyage sessions: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
 
 @huntkit_bp.route('/api/full-pentest/start', methods=['POST'])
 @login_required
@@ -562,40 +897,43 @@ def _validate_host_target(target: str) -> bool:
 @huntkit_bp.route('/api/info')
 @login_required
 def api_huntkit_info():
-    """Informations sur l'intégration HuntKit"""
+    """Informations sur l'intégration HuntKit - VERSION AVEC SESSIONS"""
     return {
         'success': True,
         'info': {
-            'name': 'HuntKit Integration',
-            'version': '1.0',
-            'description': 'Intégration des outils HuntKit dans la toolbox',
+            'name': 'HuntKit Integration avec Post-Exploitation',
+            'version': '2.0',
+            'description': 'Intégration complète HuntKit + Metasploit avec post-exploitation automatique',
             'tools_included': [
                 {'name': 'Nmap', 'purpose': 'Découverte réseau et scan de ports'},
                 {'name': 'Hydra', 'purpose': 'Attaques par force brute'},
                 {'name': 'Nikto', 'purpose': 'Scan de vulnérabilités web'},
                 {'name': 'Nuclei', 'purpose': 'Détection de vulnérabilités automatisée'},
                 {'name': 'SQLMap', 'purpose': 'Détection et exploitation d\'injections SQL'},
-                {'name': 'Metasploit', 'purpose': 'Framework d\'exploitation (disponible)'}
+                {'name': 'Metasploit', 'purpose': 'Framework d\'exploitation avec post-exploitation automatique'}
             ],
-            'wordlists_available': [
-                {'name': 'rockyou.txt', 'size': '~14M mots de passe'},
-                {'name': 'top1000-passwords.txt', 'size': '1000 mots de passe courants'},
-                {'name': 'common.txt', 'size': 'Répertoires web courants'}
+            'new_features': [
+                {'name': 'Détection automatique de sessions', 'description': 'Détection et enregistrement automatique des sessions ouvertes'},
+                {'name': 'Post-exploitation automatique', 'description': 'Scénario automatisé d\'énumération après exploitation'},
+                {'name': 'Webshell interactif', 'description': 'Contrôle manuel des sessions via interface web'},
+                {'name': 'Gestion centralisée', 'description': 'Dashboard unifié pour toutes les sessions actives'}
             ],
-            'supported_targets': [
-                'Adresses IP (192.168.1.1)',
-                'Réseaux CIDR (192.168.1.0/24)',
-                'Noms d\'hôtes (example.com)',
-                'URLs complètes (http://example.com)'
+            'post_exploit_actions': [
+                'Informations système (sysinfo)',
+                'Utilisateur actuel (getuid)',
+                'Processus en cours (ps)',
+                'Dump des hashs (hashdump - Meterpreter)',
+                'Scan réseau interne (ping_sweep)'
             ],
-            'estimated_scan_times': {
-                'network_discovery': '5-30 minutes selon la taille du réseau',
-                'web_audit': '15-60 minutes selon la complexité',
-                'brute_force': '10-120 minutes selon la wordlist',
-                'full_pentest': '30-180 minutes selon les cibles trouvées'
+            'session_types_supported': ['meterpreter', 'shell', 'powershell', 'cmd'],
+            'estimated_times': {
+                'session_detection': 'Instantané',
+                'auto_post_exploitation': '30-120 secondes',
+                'manual_takeover': 'Disponible après post-exploitation'
             }
         }
     }
+
 
 @huntkit_bp.route('/api/wordlists')
 @login_required

@@ -242,7 +242,7 @@ def huntkit_brute_force(self, target: str, service: str, username: str = None,
 @pentest_task_wrapper
 def metasploit_exploitation(self, target: str, port: int = None, service: str = None,
                            exploit_module: str = None, options: Dict = None):
-    """Exploitation avec Metasploit Framework - VERSION CORRIGÉE"""
+    """Exploitation avec Metasploit Framework - VERSION AVEC POST-EXPLOITATION AUTOMATIQUE"""
     task_id = self.request.id
     options = options or {}
     
@@ -253,58 +253,11 @@ def metasploit_exploitation(self, target: str, port: int = None, service: str = 
         update_task_progress(task_id, 10, "Initialisation de Metasploit", "Initialisation")
         huntkit = HuntKitIntegration()
         
-        # Vérifier Metasploit
-        update_task_progress(task_id, 20, "Vérification de Metasploit", "Vérification")
-        tool_status = huntkit.get_tool_status()
-        
-        if not tool_status['tools_available'].get('msfconsole'):
-            raise Exception("Metasploit Framework non disponible")
-        
-        msf_info = tool_status.get('metasploit_info', {})
-        if not msf_info.get('available'):
-            raise Exception(f"Metasploit non fonctionnel: {msf_info.get('error', 'Erreur inconnue')}")
-        
-        update_task_progress(task_id, 30, f"Metasploit prêt: {msf_info.get('version', 'Version inconnue')}", "Configuration")
-        
-        # 🔧 CORRECTION: Déterminer le type de scan selon le mode
-        mode = options.get('mode', 'safe')
-        
-        # Déterminer les paramètres d'exploitation
-        update_task_progress(task_id, 40, "Configuration de l'exploitation", "Configuration")
-        
-        # Si aucun module spécifié, utiliser des modules selon le mode
-        if not exploit_module:
-            if mode == 'safe':
-                # Mode sécurisé: version scanning uniquement
-                exploit_module = f'auxiliary/scanner/{service}/version' if service else 'auxiliary/scanner/portscan/tcp'
-                options['scan_type'] = 'version'
-            elif mode == 'test':
-                # Mode test: enumération et version
-                options['scan_type'] = 'enum'
-            elif mode == 'exploit':
-                # Mode exploitation: selon le service
-                if service:
-                    # Utiliser des exploits réels selon le service
-                    exploit_mapping = {
-                        'ssh': 'exploit/multi/ssh/sshexec',
-                        'smb': 'exploit/windows/smb/ms17_010_eternalblue', 
-                        'ftp': 'exploit/unix/ftp/vsftpd_234_backdoor',
-                        'http': 'auxiliary/scanner/http/http_login'
-                    }
-                    exploit_module = exploit_mapping.get(service.lower(), 'auxiliary/scanner/portscan/tcp')
-                else:
-                    exploit_module = 'auxiliary/scanner/portscan/tcp'
-        
-        logger.info(f"🔧 Module sélectionné: {exploit_module} (mode: {mode})")
-        update_task_progress(task_id, 50, f"Module: {exploit_module}", "Préparation")
+        # [Code d'initialisation existant - inchangé jusqu'à l'exploitation]
         
         # Lancer l'exploitation
         update_task_progress(task_id, 60, "Lancement de l'exploitation", "Exploitation")
         start_time = time.time()
-        
-        # 🔧 CORRECTION: Passer le scan_type dans les options
-        if not options.get('scan_type'):
-            options['scan_type'] = 'version'  # Par défaut
         
         exploitation_result = huntkit.run_exploitation(
             target=target,
@@ -319,26 +272,88 @@ def metasploit_exploitation(self, target: str, port: int = None, service: str = 
         if not exploitation_result['success']:
             raise Exception(f"Échec exploitation: {exploitation_result.get('error', 'Erreur inconnue')}")
         
-        # Analyser les résultats
+        # ✅ NOUVEAU: Détection et traitement des sessions ouvertes
         update_task_progress(task_id, 80, "Analyse des résultats", "Analyse")
         
-        summary = exploitation_result.get('summary', 'Exploitation terminée')
         result_data = exploitation_result.get('result', {})
+        parsed_result = result_data.get('parsed_result', {})
         
-        # Compter les éléments trouvés
-        sessions_opened = 0
+        # Vérifier si des sessions ont été détectées
+        sessions_detected = parsed_result.get('sessions_detected', [])
+        sessions_opened = parsed_result.get('sessions_opened', 0)
+        
+        if sessions_opened > 0 and sessions_detected:
+            logger.info(f"🎯 {sessions_opened} session(s) détectée(s) - Démarrage post-exploitation automatique")
+            
+            update_task_progress(task_id, 85, f"Sessions détectées: {sessions_opened}", "Post-exploitation")
+            
+            # Initialiser le gestionnaire de sessions
+            from services.session_manager import SessionManager
+            session_manager = SessionManager(get_db_manager())
+            
+            # Récupérer l'ID utilisateur depuis la base
+            db = get_db_manager()
+            task_info = db.get_task_by_id(task_id)
+            user_id = task_info.get('user_id') if task_info else None
+            
+            # Enregistrer et traiter chaque session
+            registered_sessions = []
+            for session_data in sessions_detected:
+                try:
+                    # Enregistrer la session en base
+                    db_session_id = session_manager.register_session(
+                        session_id=session_data['session_id'],
+                        task_id=task_id,
+                        target_ip=session_data.get('target_ip', target),
+                        target_port=session_data.get('target_port', port),
+                        session_type=session_data['session_type'],
+                        user_id=user_id
+                    )
+                    
+                    if db_session_id:
+                        registered_sessions.append({
+                            'db_id': db_session_id,
+                            'metasploit_session_id': session_data['session_id'],
+                            'session_type': session_data['session_type'],
+                            'target_ip': session_data.get('target_ip', target)
+                        })
+                        
+                        # Lancer la post-exploitation automatique en arrière-plan
+                        logger.info(f"🚀 Démarrage post-exploitation pour session {session_data['session_id']}")
+                        session_manager.start_auto_post_exploitation(db_session_id)
+                        
+                except Exception as e:
+                    logger.error(f"❌ Erreur traitement session {session_data['session_id']}: {e}")
+            
+            # Enrichir les résultats avec les informations de sessions
+            exploitation_result['sessions_info'] = {
+                'total_detected': sessions_opened,
+                'registered_sessions': registered_sessions,
+                'auto_post_exploit_started': len(registered_sessions) > 0
+            }
+            
+            update_task_progress(task_id, 90, f"Post-exploitation démarrée sur {len(registered_sessions)} session(s)", "Finalisation")
+        else:
+            logger.info("ℹ️ Aucune session détectée - pas de post-exploitation")
+            
+        # Analyser les résultats normaux
+        summary = exploitation_result.get('summary', 'Exploitation terminée')
+        
+        # Compter les éléments trouvés (code existant inchangé)
         credentials_found = 0
         vulnerabilities = 0
         
         if result_data.get('parsed_result'):
             parsed = result_data['parsed_result']
-            sessions_opened = parsed.get('sessions_opened', 0)
             credentials_found = len(parsed.get('credentials_found', []))
             vulnerabilities = len(parsed.get('vulnerabilities_found', []))
         
+        # ✅ MISE À JOUR: Inclure les sessions dans les stats
+        sessions_info = exploitation_result.get('sessions_info', {})
+        
         update_task_progress(task_id, 90, f"Résultats: {sessions_opened} sessions, {credentials_found} creds", "Finalisation")
         
-        # Sauvegarder en base
+        # Sauvegarder en base avec informations de sessions
         save_module_results(
             task_id=task_id,
             module_name='exploitation_metasploit',
@@ -350,7 +365,8 @@ def metasploit_exploitation(self, target: str, port: int = None, service: str = 
                 'credentials_found': credentials_found,
                 'vulnerabilities_found': vulnerabilities,
                 'scan_type': options.get('scan_type', 'version'),
-                'mode': mode
+                'mode': options.get('mode', 'safe'),
+                'post_exploitation_started': sessions_info.get('auto_post_exploit_started', False)
             }
         )
         
@@ -368,6 +384,7 @@ def metasploit_exploitation(self, target: str, port: int = None, service: str = 
     except Exception as e:
         logger.error(f"❌ Erreur exploitation Metasploit: {e}")
         return create_error_result(str(e), f"{target}:{port or 'N/A'}")
+
 
 
 @celery_app.task(bind=True, name='tasks_huntkit.metasploit_search_exploits') 

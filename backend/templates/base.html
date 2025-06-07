@@ -27,7 +27,16 @@
                   <li><a class="dropdown-item" href="/huntkit/exploit">🎯 Exploitation</a></li>
                   <li><a class="dropdown-item" href="/huntkit/full-pentest">🎯 Pentest Complet</a></li>
                   <li><hr class="dropdown-divider"></li>
+                  
+                  <!-- ✅ NOUVEAU: Section Sessions -->
+                  <li><h6 class="dropdown-header">🎯 Sessions & Post-Exploitation</h6></li>
+                  <li><a class="dropdown-item" href="/huntkit/sessions">
+                    <span id="nav-sessions-badge">🎯 Sessions Actives</span>
+                    <span class="badge bg-success ms-2" id="nav-sessions-count">0</span>
+                  </a></li>
+                  <li><hr class="dropdown-divider"></li>
                 {% endif %}
+                
                 <li><a class="dropdown-item" href="/huntkit/tools-status">🔧 Statut Outils</a></li>
               </ul>
             </li>            
@@ -162,6 +171,46 @@
         }
       }, duration);
     }
+
+    // ✅ NOUVEAU: Mise à jour automatique du compteur de sessions dans le menu
+    document.addEventListener('DOMContentLoaded', function() {
+      updateSessionsCounter();
+      setInterval(updateSessionsCounter, 30000); // Toutes les 30 secondes
+    });
+
+    function updateSessionsCounter() {
+      // Seulement si l'utilisateur a les droits
+      {% if current_user and current_user.role in ['pentester', 'admin'] %}
+      fetch('/huntkit/api/sessions/active')
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            const count = data.total || 0;
+            const badge = document.getElementById('nav-sessions-count');
+            const text = document.getElementById('nav-sessions-badge');
+            
+            if (badge) {
+              badge.textContent = count;
+              badge.className = count > 0 ? 'badge bg-success ms-2' : 'badge bg-secondary ms-2';
+            }
+            
+            if (text && count > 0) {
+              text.textContent = '🎯 Sessions Actives';
+              // Effet visuel si nouvelles sessions
+              if (count > (window.lastSessionCount || 0)) {
+                badge.style.animation = 'pulse 2s';
+                setTimeout(() => { if (badge) badge.style.animation = ''; }, 2000);
+              }
+            }
+            
+            window.lastSessionCount = count;
+          }
+        })
+        .catch(error => {
+          console.debug('Session counter update failed:', error);
+        });
+      {% endif %}
+    }
   </script>
 
   <!-- Styles pour animations -->
@@ -176,10 +225,22 @@
       to { transform: translateX(100%); opacity: 0; }
     }
 
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
     .dropdown-menu {
       border: none;
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       border-radius: 8px;
+    }
+
+    .dropdown-header {
+      color: #6c757d;
+      font-size: 0.875rem;
+      font-weight: 600;
     }
 
     .card {

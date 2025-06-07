@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}Sessions Metasploit{% endblock %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2>🎯 Sessions Metasploit Actives</h2>
+    <p class="text-muted">Gestion des sessions d'exploitation et post-exploitation automatique</p>
+
+    <!-- Statistiques des sessions -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center border-success">
+                <div class="card-body">
+                    <h4 class="card-title text-success" id="total-sessions">-</h4>
+                    <p class="card-text">🎯 Sessions actives</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-info">
+                <div class="card-body">
+                    <h4 class="card-title text-info" id="post-exploit-completed">-</h4>
+                    <p class="card-text">🤖 Post-exploit terminé</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-warning">
+                <div class="card-body">
+                    <h4 class="card-title text-warning" id="manual-ready">-</h4>
+                    <p class="card-text">👤 Prêt pour contrôle manuel</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-primary">
+                <div class="card-body">
+                    <h4 class="card-title text-primary" id="different-targets">-</h4>
+                    <p class="card-text">🖥️ Cibles uniques</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions rapides -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between">
+                <button class="btn btn-outline-primary" onclick="refreshSessions()">
+                    🔄 Actualiser
+                </button>
+                <button class="btn btn-outline-success" onclick="refreshMetasploitSessions()">
+                    🎯 Synchroniser avec Metasploit
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Liste des sessions -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5>📋 Sessions actives</h5>
+            <span class="badge bg-primary" id="sessions-count">0</span>
+        </div>
+        <div class="card-body">
+            <div id="sessions-list">
+                <div class="text-center text-muted py-4">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Chargement des sessions...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let refreshInterval;
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🎯 Page sessions chargée');
+    refreshSessions();
+    startAutoRefresh();
+});
+
+function startAutoRefresh() {
+    refreshInterval = setInterval(refreshSessions, 10000); // 10 secondes
+    console.log('🔄 Auto-refresh sessions activé');
+}
+
+function refreshSessions() {
+    console.log('🔄 Actualisation des sessions...');
+    
+    fetch('/huntkit/api/sessions/active')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('📊 Sessions reçues:', data.sessions.length);
+                updateSessionsDisplay(data.sessions);
+                updateStats(data.sessions);
+            } else {
+                console.error('❌ Erreur récupération sessions:', data.error);
+                showError('Erreur: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erreur réseau:', error);
+            showError('Erreur de connexion');
+        });
+}
+
+function updateStats(sessions) {
+    const totalSessions = sessions.length;
+    const postExploitCompleted = sessions.filter(s => s.auto_post_exploit_completed).length;
+    const manualReady = sessions.filter(s => s.manual_takeover_enabled).length;
+    const uniqueTargets = new Set(sessions.map(s => s.target_ip)).size;
+    
+    document.getElementById('total-sessions').textContent = totalSessions;
+    document.getElementById('post-exploit-completed').textContent = postExploitCompleted;
+    document.getElementById('manual-ready').textContent = manualReady;
+    document.getElementById('different-targets').textContent = uniqueTargets;
+    document.getElementById('sessions-count').textContent = totalSessions;
+}
+
+function updateSessionsDisplay(sessions) {
+    const container = document.getElementById('sessions-list');
+    
+    if (sessions.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted py-4">
+                😴 Aucune session active
+                <br><small>Les sessions d'exploitation apparaîtront ici</small>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    
+    sessions.forEach(session => {
+        const postExploitStatus = session.auto_post_exploit_completed ? 
+            '<span class="badge bg-success">✅ Terminé</span>' : 
+            '<span class="badge bg-warning">🔄 En cours</span>';
+        
+        const manualControl = session.manual_takeover_enabled ?
+            `<button class="btn btn-sm btn-primary" onclick="openSession(${session.id})">
+                👤 Prendre le contrôle
+            </button>` :
+            '<button class="btn btn-sm btn-secondary" disabled>⏳ En attente</button>';
+        
+        const sessionAge = calculateAge(session.opened_at);
+        
+        html += `
+            <div class="card mb-3 border-success">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-3">
+                            <h6 class="card-title mb-1">
+                                ${getSessionIcon(session.session_type)} Session #${session.session_id}
+                            </h6>
+                            <small class="text-muted">${session.session_type.toUpperCase()}</small>
+                        </div>
+                        <div class="col-md-3">
+                            <p class="mb-1"><strong>🎯 Cible:</strong> ${session.target_ip}:${session.target_port || 'N/A'}</p>
+                            <small class="text-muted">Via: ${session.task_name || 'Exploitation directe'}</small>
+                        </div>
+                        <div class="col-md-2">
+                            <p class="mb-1"><strong>🤖 Post-exploit:</strong></p>
+                            ${postExploitStatus}
+                        </div>
+                        <div class="col-md-2">
+                            <p class="mb-1"><strong>⏰ Ouvert:</strong></p>
+                            <small>${sessionAge}</small>
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <div class="btn-group-vertical btn-group-sm" role="group">
+                                <button class="btn btn-outline-info" onclick="viewSessionDetails(${session.id})">
+                                    👁️ Détails
+                                </button>
+                                ${manualControl}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function getSessionIcon(sessionType) {
+    const icons = {
+        'meterpreter': '🎯',
+        'shell': '💻',
+        'powershell': '⚡',
+        'cmd': '📟'
+    };
+    return icons[sessionType.toLowerCase()] || '🔧';
+}
+
+function calculateAge(timestamp) {
+    const now = new Date();
+    const opened = new Date(timestamp);
+    const diffMinutes = Math.floor((now - opened) / (1000 * 60));
+    
+    if (diffMinutes < 60) {
+        return `${diffMinutes}min`;
+    } else {
+        const hours = Math.floor(diffMinutes / 60);
+        return `${hours}h${diffMinutes % 60}min`;
+    }
+}
+
+function viewSessionDetails(sessionId) {
+    window.location.href = `/huntkit/sessions/${sessionId}`;
+}
+
+function openSession(sessionId) {
+    // Rediriger vers la page de contrôle de session
+    window.location.href = `/huntkit/sessions/${sessionId}`;
+}
+
+function refreshMetasploitSessions() {
+    showNotification('🎯 Synchronisation avec Metasploit...', 'info');
+    
+    fetch('/huntkit/api/sessions/sync', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('✅ Synchronisation terminée', 'success');
+            refreshSessions();
+        } else {
+            showNotification('❌ Erreur synchronisation: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        showNotification('❌ Erreur de connexion', 'danger');
+    });
+}
+
+function showError(message) {
+    const container = document.getElementById('sessions-list');
+    container.innerHTML = `
+        <div class="alert alert-danger">
+            <strong>❌ ${message}</strong><br>
+            <small>Vérifiez la connexion et réessayez</small>
+        </div>
+    `;
+}
+
+function showNotification(message, type) {
+    if (typeof window.showNotification === 'function') {
+        window.showNotification(message, type);
+    } else {
+        console.log(message);
+    }
+}
+
+// Nettoyer l'interval quand on quitte la page
+window.addEventListener('beforeunload', function() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+});
+</script>
+
+{% endblock %}
