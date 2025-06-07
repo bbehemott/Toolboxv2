@@ -1485,6 +1485,82 @@ function formatToolsStatus(data) {
     return html;
 }
 
+
+function showBruteForceResults(result) {
+    const resultsDiv = document.getElementById('task-results');
+    const contentDiv = document.getElementById('results-content');
+    
+    const resultData = result.result_data || result.results;
+    
+    if (resultData && resultData.success) {
+        let html = `
+            <div class="alert alert-success">
+                <h6>✅ Force brute terminé avec succès !</h6>
+                <p><strong>🎯 Cible :</strong> ${resultData.target}</p>
+                <p><strong>🔧 Service :</strong> ${resultData.service || 'N/A'}</p>
+            </div>
+        `;
+        
+        // Credentials trouvés
+        const credentials = resultData.credentials_found || [];
+        if (credentials.length > 0) {
+            html += `
+                <div class="alert alert-warning">
+                    <h6>🚨 ${credentials.length} credential(s) trouvé(s) !</h6>
+                </div>
+                
+                <h6>🔑 Credentials découverts :</h6>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm table-striped">
+                        <thead class="table-danger">
+                            <tr>
+                                <th>Login</th>
+                                <th>Mot de passe</th>
+                                <th>Service</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            credentials.forEach(cred => {
+                html += `
+                    <tr>
+                        <td><strong>${cred.login}</strong></td>
+                        <td><code>${cred.password}</code></td>
+                        <td>${cred.service || resultData.service || 'N/A'}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="alert alert-success">
+                    <h6>✅ Aucun credential faible trouvé</h6>
+                    <p>Le service semble résistant aux attaques par dictionnaire.</p>
+                </div>
+            `;
+        }
+        
+        contentDiv.innerHTML = html;
+        resultsDiv.style.display = 'block';
+        
+    } else {
+        contentDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <h6>❌ Erreur lors du force brute</h6>
+                <p>${resultData?.error || 'Erreur inconnue'}</p>
+            </div>
+        `;
+        resultsDiv.style.display = 'block';
+    }
+}
+
+
 // Fonction pour formatter les résultats de force brute
 function formatBruteForceResults(data) {
     let html = `
