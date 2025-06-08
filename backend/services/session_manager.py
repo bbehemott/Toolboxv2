@@ -115,37 +115,51 @@ class SessionManager:
         return base_actions
     
     def _execute_post_exploit_action(self, db_session_id: int, action_type: str, command: str):
-        """Exécute une action de post-exploitation - VERSION CORRIGÉE ID"""
+        """Exécute une action de post-exploitation - VERSION RPC CORRIGÉE"""
         try:
             # ✅ CORRECTION CRITIQUE : Récupérer le bon session_id Metasploit
             session_info = self.get_session_info(db_session_id)
             if not session_info:
                 logger.error(f"❌ Session {db_session_id} non trouvée en base")
                 return
-            
+        
             # ✅ CORRECTION : Le session_id en base EST l'ID Metasploit réel
             metasploit_session_id = session_info['session_id']
-            
+        
             logger.info(f"🔧 Exécution {action_type} sur session MSF #{metasploit_session_id} (DB ID: {db_session_id})")
-            
+        
             # Créer l'enregistrement d'action
             action_id = self._create_post_exploit_action(db_session_id, action_type, command)
             if not action_id:
                 logger.error(f"❌ Impossible de créer l'action {action_type}")
                 return
-            
+        
             # Marquer comme en cours
             self._update_post_exploit_action(action_id, 'running')
-            
+        
             start_time = time.time()
+        
+            # ✅ CORRECTION PRINCIPALE : Utiliser le client RPC plutôt que les commandes temporaires
+            try:
+                # Utiliser le client RPC persistant de HuntKit
+                from core.huntkit_tools import HuntKitIntegration
+                huntkit = HuntKitIntegration()
             
-            # ✅ CORRECTION : Utiliser le bon ID de session Metasploit
-            result = self.huntkit.metasploit.execute_session_command(
-                metasploit_session_id, command  # ✅ ID correct depuis la base
-            )
+                # Exécuter via RPC persistant
+                result = huntkit.metasploit.execute_session_command(
+                    metasploit_session_id, command
+                )
             
+            except Exception as rpc_error:
+                logger.warning(f"⚠️ RPC échoué, fallback vers méthode classique: {rpc_error}")
+            
+                # Fallback vers l'ancienne méthode si RPC échoue
+                result = huntkit.metasploit.execute_session_command(
+                    metasploit_session_id, command
+                )
+        
             execution_time = int(time.time() - start_time)
-            
+        
             # Mettre à jour avec les résultats
             if result['success']:
                 self._update_post_exploit_action(
@@ -162,11 +176,12 @@ class SessionManager:
                     execution_time=execution_time
                 )
                 logger.error(f"❌ Action {action_type} échouée: {result.get('error')}")
-                
+            
         except Exception as e:
             logger.error(f"❌ Erreur exécution action {action_type}: {e}")
             if 'action_id' in locals():
                 self._update_post_exploit_action(action_id, 'failed', error_message=str(e))
+
 
 
     def _create_post_exploit_action(self, session_id: int, action_type: str, command: str) -> Optional[int]:

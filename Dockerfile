@@ -85,6 +85,19 @@ RUN curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/conf
     /tmp/msfinstall && \
     rm /tmp/msfinstall
 
+#Configuration pour RPC Metasploit
+RUN echo "#!/bin/bash" > /usr/local/bin/start-msfrpcd && \
+    echo "exec /opt/metasploit-framework/embedded/framework/msfrpcd \"\$@\"" >> /usr/local/bin/start-msfrpcd && \
+    chmod +x /usr/local/bin/start-msfrpcd
+
+#Créer les liens symboliques pour msfrpcd
+RUN ln -sf /opt/metasploit-framework/embedded/framework/msfrpcd /usr/local/bin/msfrpcd || \
+    ln -sf /opt/metasploit-framework/msfrpcd /usr/local/bin/msfrpcd || \
+    echo "msfrpcd link will be created at runtime"
+
+#Installer les dépendances Python pour RPC
+RUN pip3 install msgpack requests urllib3
+
 # ===== WORDLISTS ESSENTIELLES =====
 # Télécharger seulement les wordlists nécessaires
 RUN mkdir -p $WORDLISTS/hydra $WORDLISTS/nuclei

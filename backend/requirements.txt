@@ -27,6 +27,10 @@ lxml==4.9.3
 beautifulsoup4==4.12.2
 xmltodict==0.13.0
 
+# ✅ NOUVELLES DÉPENDANCES POUR RPC METASPLOIT
+msgpack==1.0.7
+urllib3==2.1.0
+
 # Development
 pytest==7.4.2
 pytest-cov==4.1.0

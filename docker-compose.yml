@@ -9,6 +9,7 @@ services:
     command: python backend/app.py
     ports:
       - "5000:5000"
+      - "55552:55552"
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
@@ -26,6 +27,10 @@ services:
       # Variables pour outils HuntKit
       - TOOLS_DIR=/opt
       - WORDLISTS_DIR=/usr/share/wordlists
+      - MSF_RPC_HOST=127.0.0.1
+      - MSF_RPC_PORT=55552
+      - MSF_RPC_USER=msf
+      - MSF_RPC_PASS=msfrpc123
     depends_on:
       - redis
       - postgres
@@ -60,6 +65,10 @@ services:
       # Variables pour outils HuntKit
       - TOOLS_DIR=/opt
       - WORDLISTS_DIR=/usr/share/wordlists
+      - MSF_RPC_HOST=172.20.0.2  # IP du conteneur app
+      - MSF_RPC_PORT=55552
+      - MSF_RPC_USER=msf
+      - MSF_RPC_PASS=msfrpc123
     depends_on:
       - redis
       - postgres
