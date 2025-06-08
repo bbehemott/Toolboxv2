@@ -24,6 +24,18 @@ class SessionManager:
             # ✅ CORRECTION : Utiliser directement le session_id de Metasploit
             metasploit_session_id = session_data['session_id']  # C'est déjà le bon ID MSF
             
+            try:
+                int(metasploit_session_id)  # Test de validation
+            except ValueError:
+                logger.error(f"❌ ID session Metasploit invalide: '{metasploit_session_id}'")
+                continue
+        
+            # Vérifier si cette session Metasploit existe déjà
+            if self._session_already_exists(metasploit_session_id):
+                logger.warning(f"⚠️ Session MSF #{metasploit_session_id} déjà enregistrée - ignorée")
+                continue
+
+
             db_session_id = self.register_session(
                 session_id=metasploit_session_id,  # ✅ ID réel Metasploit
                 task_id=task_id,
@@ -45,6 +57,22 @@ class SessionManager:
                 self.start_auto_post_exploitation(db_session_id)
         
         return registered_sessions
+
+    def _session_already_exists(self, metasploit_session_id: str) -> bool:
+        """Vérifie si une session Metasploit existe déjà en base"""
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id FROM metasploit_sessions 
+                    WHERE session_id = %s AND status = 'active'
+                ''', (str(metasploit_session_id),))
+            
+                return cursor.fetchone() is not None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur vérification session existante: {e}")
+            return False
 
     def register_session(self, session_id: str, task_id: str, target_ip: str, 
                         target_port: int = None, session_type: str = 'shell',
@@ -145,21 +173,24 @@ class SessionManager:
                 from core.huntkit_tools import HuntKitIntegration
                 huntkit = HuntKitIntegration()
             
+                msf_session_int = int(metasploit_session_id)
+            
+                logger.info(f"🎯 Utilisation ID Metasploit: {msf_session_int} (type: {type(msf_session_int)})")
+
                 # Exécuter via RPC persistant
                 result = huntkit.metasploit.execute_session_command(
-                    metasploit_session_id, command
+                    msf_session_int, command
                 )
             
+            except ValueError as ve:
+                logger.error(f"❌ ID Metasploit invalide '{metasploit_session_id}': {ve}")
+                result = {'success': False, 'error': f'ID session invalide: {metasploit_session_id}'}
             except Exception as rpc_error:
-                logger.warning(f"⚠️ RPC échoué, fallback vers méthode classique: {rpc_error}")
-            
-                # Fallback vers l'ancienne méthode si RPC échoue
-                result = huntkit.metasploit.execute_session_command(
-                    metasploit_session_id, command
-                )
-        
+                logger.warning(f"⚠️ RPC échoué pour session {metasploit_session_id}: {rpc_error}")
+                result = {'success': False, 'error': str(rpc_error)}
+    
             execution_time = int(time.time() - start_time)
-        
+
             # Mettre à jour avec les résultats
             if result['success']:
                 self._update_post_exploit_action(

