@@ -8,14 +8,16 @@ import os
 import time
 import json
 
-# Ajouter le backend au path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+# Ajouter le répertoire backend au path Python
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
 
 def test_minio_connection():
     """Test 1: Connexion MinIO"""
     print("🔧 Test 1: Connexion MinIO")
     try:
-        from minio_client import MinIOClient
+        # Import corrigé selon la structure du projet
+        from security.client.minio_client import MinIOClient
         
         client = MinIOClient()
         status = client.get_status()
@@ -35,8 +37,9 @@ def test_key_management():
     """Test 2: Gestion des clés"""
     print("\n🔑 Test 2: Gestion des clés")
     try:
-        from minio_client import MinIOClient
-        from key_management import KeyManagementService
+        # Imports corrigés
+        from security.client.minio_client import MinIOClient
+        from security.key_management.key_manager import KeyManagementService
         
         client = MinIOClient()
         if not client.is_available():
@@ -75,9 +78,10 @@ def test_encryption():
     """Test 3: Service de chiffrement"""
     print("\n🛡️ Test 3: Service de chiffrement")
     try:
-        from minio_client import MinIOClient
-        from key_management import KeyManagementService
-        from crypto import EncryptionService
+        # Imports corrigés
+        from security.client.minio_client import MinIOClient
+        from security.key_management.key_manager import KeyManagementService
+        from security.crypto.encryption_service import EncryptionService
         
         client = MinIOClient()
         if not client.is_available():
@@ -122,8 +126,9 @@ def test_backup_service():
     """Test 4: Service de sauvegarde"""
     print("\n📦 Test 4: Service de sauvegarde")
     try:
-        from minio_client import MinIOClient
-        from backup import BackupService
+        # Imports corrigés
+        from security.client.minio_client import MinIOClient
+        from security.backup.backup_service import BackupService
         
         client = MinIOClient()
         if not client.is_available():
@@ -201,10 +206,11 @@ def test_full_workflow():
     """Test 6: Workflow complet"""
     print("\n🔄 Test 6: Workflow complet")
     try:
-        from minio_client import MinIOClient
-        from key_management import KeyManagementService
-        from crypto import EncryptionService
-        from backup import BackupService
+        # Imports corrigés
+        from security.client.minio_client import MinIOClient
+        from security.key_management.key_manager import KeyManagementService
+        from security.crypto.encryption_service import EncryptionService
+        from security.backup.backup_service import BackupService
         
         # 1. Initialisation
         client = MinIOClient()

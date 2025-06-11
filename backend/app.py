@@ -7,6 +7,7 @@ from api.huntkit import huntkit_bp
 from config import config
 from database import DatabaseManager
 from auth import AuthManager
+from security import MinIOClient
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -62,7 +63,9 @@ def create_app(config_name=None):
     
     # Context processors pour les templates
     register_template_helpers(app)
-    
+
+    log_services_status(app)
+
     logger.info(f"Application démarrée en mode {config_name}")
     return app
 

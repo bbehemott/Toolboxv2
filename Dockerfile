@@ -42,6 +42,9 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     python3-pip \
     \
+    # POSTGRESQL CLIENT POUR SAUVEGARDE
+    postgresql-client \
+    \
     # Utilitaires
     zip \
     unzip \
@@ -127,6 +130,7 @@ RUN echo "=== VÉRIFICATION DES OUTILS ===" && \
     echo "✓ Nuclei: $(nuclei -version 2>/dev/null || echo 'Nuclei installé')" && \
     echo "✓ SQLmap: $(sqlmap --version 2>/dev/null || echo 'SQLmap installé')" && \
     echo "✓ Metasploit: $(ls /opt/metasploit* 2>/dev/null | head -1 || echo 'Framework MSF installé')" && \
+    echo "✓ PostgreSQL Client: $(pg_dump --version 2>/dev/null || echo 'pg_dump installé')" && \
     echo "=== OUTILS PRÊTS ==="
 
 # Variables d'environnement Python

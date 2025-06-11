@@ -5,6 +5,7 @@ Compatible avec l'architecture Flask + PostgreSQL existante
 import os
 import json
 import tempfile
+import psycopg2
 import subprocess
 import tarfile
 from datetime import datetime
@@ -97,37 +98,44 @@ class BackupService:
                 'backup_id': backup_id,
                 'error': str(e)
             }
-    
+
+
     def _backup_postgresql(self, backup_id: str) -> Optional[str]:
-        """Sauvegarde PostgreSQL vers MinIO"""
+        """Sauvegarde PostgreSQL vers MinIO - VERSION CORRIGÉE"""
         try:
-            # Créer dump PostgreSQL
+            # Créer fichier temporaire pour le dump
             with tempfile.NamedTemporaryFile(mode='w+', suffix='.sql', delete=False) as f:
                 temp_path = f.name
             
-            # Commande pg_dump via Docker
-            dump_command = [
-                'docker', 'exec', 'toolbox-postgres',
-                'pg_dump', '-U', 'toolbox_user', '-d', 'toolbox'
-            ]
-
-            env = os.environ.copy()
-            env['PGPASSWORD'] = 'toolbox_password'
-
-            logger.debug(f"🔧 Exécution: {' '.join(dump_command)}")
+            # ✅ SOLUTION 1: Utiliser pg_dump directement avec connection string
+            # Au lieu de 'docker exec', on utilise pg_dump avec l'URL de connexion
+            connection_string = "postgresql://toolbox_user:toolbox_password@toolbox-postgres:5432/toolbox"
             
+            dump_command = [
+                'pg_dump', 
+                connection_string
+            ]
+    
+            logger.debug(f"🔧 Exécution pg_dump: {dump_command[0]} [connection_masked]")
+            
+            # Exécuter pg_dump directement
             with open(temp_path, 'w') as f:
                 result = subprocess.run(
                     dump_command,
                     stdout=f,
                     stderr=subprocess.PIPE,
                     text=True,
-                    timeout=300,
-                    env=env
+                    timeout=300
                 )
             
             if result.returncode != 0:
                 logger.error(f"❌ pg_dump failed: {result.stderr}")
+                os.unlink(temp_path)
+                return None
+            
+            # Vérifier que le fichier n'est pas vide
+            if os.path.getsize(temp_path) == 0:
+                logger.error("❌ Dump PostgreSQL vide")
                 os.unlink(temp_path)
                 return None
             
@@ -143,11 +151,16 @@ class BackupService:
             
         except subprocess.TimeoutExpired:
             logger.error("❌ Timeout lors de la sauvegarde PostgreSQL")
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                os.unlink(temp_path)
             return None
         except Exception as e:
             logger.error(f"❌ Erreur sauvegarde PostgreSQL: {e}")
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                os.unlink(temp_path)
             return None
-    
+
+
     def _backup_encryption_keys(self, backup_id: str) -> Optional[str]:
         """Sauvegarde du bucket encryption-keys"""
         try:

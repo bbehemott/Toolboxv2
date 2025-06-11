@@ -118,36 +118,63 @@ class MinIOKeyStore:
         except S3Error as e:
             logger.error(f"❌ Erreur listage clés: {e}")
             return []
-    
+
     def archive_key(self, key_id: str) -> bool:
-        """Archive une clé (déplace vers archive/) - Rotation sécurisée"""
-        try:
-            source_path = f'keys/{key_id}.key'
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            archive_path = f'archive/{key_id}_{timestamp}.key'
-            
-            # Copier vers archive
-            self.client.copy_object(
-                self.bucket, 
-                archive_path,
-                f'/{self.bucket}/{source_path}'
-            )
-            
-            # Supprimer l'original
-            self.client.remove_object(self.bucket, source_path)
-            
-            # Log de l'archivage
-            self._log_key_operation(key_id, 'archive', success=True, 
-                                  details={'archive_path': archive_path})
-            
-            logger.info(f"📦 Clé archivée: {key_id} → {archive_path}")
-            return True
-            
-        except S3Error as e:
-            logger.error(f"❌ Erreur archivage clé {key_id}: {e}")
-            self._log_key_operation(key_id, 'archive', success=False, error=str(e))
-            return False
-    
+            """Archive une clé (déplace vers archive/) - Rotation sécurisée"""
+            try:
+                source_path = f'keys/{key_id}.key'
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                archive_path = f'archive/{key_id}_{timestamp}.key'
+                
+                # ✅ SOLUTION COMPATIBLE MinIO 7.2.0
+                # Méthode 1: Télécharger puis re-uploader (plus simple et compatible)
+                
+                # 1. Télécharger la clé
+                try:
+                    response = self.client.get_object(self.bucket, source_path)
+                    key_data = response.read()
+                    
+                    # 2. Uploader vers archive avec métadonnées
+                    from io import BytesIO
+                    self.client.put_object(
+                        self.bucket,
+                        archive_path, 
+                        BytesIO(key_data),
+                        len(key_data),
+                        metadata={
+                            'archived_from': source_path,
+                            'archived_at': timestamp,
+                            'operation': 'key_rotation'
+                        }
+                    )
+                    
+                    # 3. Supprimer l'original
+                    self.client.remove_object(self.bucket, source_path)
+                    
+                    # Log de l'archivage
+                    self._log_key_operation(key_id, 'archive', success=True, 
+                                          details={'archive_path': archive_path})
+                    
+                    logger.info(f"📦 Clé archivée: {key_id} → {archive_path}")
+                    return True
+                    
+                except S3Error as e:
+                    if e.code == 'NoSuchKey':
+                        logger.warning(f"⚠️ Clé {key_id} non trouvée pour archivage")
+                        return False
+                    else:
+                        raise
+                
+            except S3Error as e:
+                logger.error(f"❌ Erreur archivage clé {key_id}: {e}")
+                self._log_key_operation(key_id, 'archive', success=False, error=str(e))
+                return False
+            except Exception as e:
+                logger.error(f"❌ Erreur archivage clé {key_id}: {e}")
+                self._log_key_operation(key_id, 'archive', success=False, error=str(e))
+                return False
+
+
     def delete_key(self, key_id: str) -> bool:
         """Supprime définitivement une clé (admin seulement)"""
         try:
