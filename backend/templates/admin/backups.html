@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+{% block title %}Gestion des Sauvegardes MinIO{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>🗄️ Gestion des Sauvegardes MinIO</h2>
+            <p class="text-muted">Tâche 40 - Système de sauvegarde et restauration</p>
+            
+            <!-- Statut MinIO -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>📊 Statut MinIO</h5>
+                </div>
+                <div class="card-body">
+                    {% if minio_status.available %}
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i> MinIO opérationnel
+                            <small class="d-block">Endpoint: {{ minio_status.endpoint }}</small>
+                            <small class="d-block">Buckets: {{ minio_status.buckets|join(', ') }}</small>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle"></i> MinIO non disponible
+                            <small class="d-block">Vérifiez que le conteneur MinIO est démarré</small>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>⚡ Actions de Sauvegarde</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button class="btn btn-primary btn-lg w-100" onclick="createBackup()" 
+                                    {% if not minio_status.available %}disabled{% endif %}>
+                                <i class="fas fa-save"></i> Créer Sauvegarde Complète
+                            </button>
+                            <small class="text-muted">PostgreSQL + Clés MinIO + Preuves</small>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-info w-100" onclick="refreshBackupList()">
+                                <i class="fas fa-sync"></i> Actualiser
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="http://localhost:9091" target="_blank" class="btn btn-outline-secondary w-100">
+                                <i class="fas fa-external-link-alt"></i> Console MinIO
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div id="backup-progress" class="card-footer" style="display: none;">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             style="width: 100%">
+                            <i class="fas fa-spinner fa-spin"></i> Création de la sauvegarde en cours...
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Statistiques -->
+            {% if storage_stats %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>📈 Statistiques de Stockage</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-primary">{{ storage_stats.total_backups }}</h4>
+                                <small>Sauvegardes</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-info">{{ storage_stats.total_size_mb }} MB</h4>
+                                <small>Espace utilisé</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-success">{{ storage_stats.average_size_mb }} MB</h4>
+                                <small>Taille moyenne</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                {% if storage_stats.newest_backup %}
+                                    <h6 class="text-secondary">{{ storage_stats.newest_backup[:10] }}</h6>
+                                    <small>Dernière sauvegarde</small>
+                                {% else %}
+                                    <h6 class="text-muted">Aucune</h6>
+                                    <small>Dernière sauvegarde</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Liste des sauvegardes -->
+            <div class="card">
+                <div class="card-header">
+                    <h5>📋 Sauvegardes Disponibles</h5>
+                </div>
+                <div class="card-body">
+                    {% if backups and backups|length > 0 %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>ID Sauvegarde</th>
+                                        <th>Date/Heure</th>
+                                        <th>Description</th>
+                                        <th>Fichiers</th>
+                                        <th>Taille</th>
+                                        <th>Statut</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="backup-list">
+                                    {% for backup in backups %}
+                                    <tr>
+                                        <td>
+                                            <code>{{ backup.backup_id }}</code>
+                                            <small class="d-block text-muted">v{{ backup.version }}</small>
+                                        </td>
+                                        <td>{{ backup.timestamp.replace('_', ' ').replace('T', ' ')[:16] }}</td>
+                                        <td>{{ backup.description|truncate(30) }}</td>
+                                        <td>
+                                            <span class="badge bg-info">{{ backup.files_count }} fichiers</span>
+                                        </td>
+                                        <td>{{ (backup.size / 1024 / 1024) | round(2) }} MB</td>
+                                        <td>
+                                            <span class="badge bg-{{ 'success' if backup.status == 'completed' else 'warning' }}">
+                                                {{ backup.status }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                <button class="btn btn-sm btn-info" 
+                                                        onclick="showBackupDetails('{{ backup.backup_id }}')"
+                                                        title="Détails">
+                                                    <i class="fas fa-info-circle"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-warning" 
+                                                        onclick="restoreBackup('{{ backup.backup_id }}')"
+                                                        title="Restaurer">
+                                                    <i class="fas fa-undo"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-danger" 
+                                                        onclick="deleteBackup('{{ backup.backup_id }}')"
+                                                        title="Supprimer">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-inbox fa-3x mb-3"></i>
+                            <h5>Aucune sauvegarde disponible</h5>
+                            <p>Créez votre première sauvegarde avec le bouton ci-dessus</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Informations sur le système -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5>ℹ️ Informations Système</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <strong>🗂️ Composants sauvegardés :</strong>
+                            <ul class="mb-0">
+                                <li>Base PostgreSQL complète</li>
+                                <li>Clés de chiffrement MinIO</li>
+                                <li>Preuves de scans</li>
+                                <li>Configuration application</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <strong>🔐 Sécurité :</strong>
+                            <ul class="mb-0">
+                                <li>Accès admin uniquement</li>
+                                <li>Chiffrement Fernet des données</li>
+                                <li>Audit des opérations</li>
+                                <li>Stockage S3-compatible</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <strong>🏗️ Architecture :</strong>
+                            <ul class="mb-0">
+                                <li>Flask + PostgreSQL</li>
+                                <li>MinIO S3-compatible</li>
+                                <li>Docker containerisé</li>
+                                <li>Conforme ESI M1 Cyber</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal détails sauvegarde -->
+<div class="modal fade" id="backupDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">📄 Détails de la Sauvegarde</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="backup-details-content">
+                <div class="text-center">
+                    <i class="fas fa-spinner fa-spin"></i> Chargement...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function createBackup() {
+    const description = prompt('Description de la sauvegarde (optionnel):', 'Sauvegarde manuelle');
+    if (description === null) return; // Annulé
+    
+    if (!confirm('⚠️ Créer une sauvegarde complète ?\n\nCela inclut :\n- Base PostgreSQL\n- Clés de chiffrement\n- Preuves de scans\n\nCela peut prendre plusieurs minutes.')) {
+        return;
+    }
+    
+    // Afficher la progress bar
+    document.getElementById('backup-progress').style.display = 'block';
+    
+    fetch('/admin/backup/create', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            description: description || 'Sauvegarde manuelle'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('backup-progress').style.display = 'none';
+        
+        if (data.success) {
+            showNotification(`✅ Sauvegarde créée: ${data.backup_id}\n📁 ${data.files_count} fichiers`, 'success');
+            // Actualiser la liste après 2 secondes
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showNotification('❌ Erreur: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        document.getElementById('backup-progress').style.display = 'none';
+        showNotification('❌ Erreur réseau: ' + error, 'danger');
+    });
+}
+
+function restoreBackup(backupId) {
+    if (!confirm(`⚠️ ATTENTION: Restaurer la sauvegarde ${backupId} ?\n\n` +
+                 `Cette action va :\n` +
+                 `• Remplacer TOUTES les données PostgreSQL\n` +
+                 `• Restaurer les clés de chiffrement\n` +
+                 `• Restaurer les preuves de scans\n\n` +
+                 `Cette action est IRRÉVERSIBLE.\n\n` +
+                 `Voulez-vous continuer ?`)) {
+        return;
+    }
+    
+    // Afficher une indication de traitement
+    const button = event.target.closest('button');
+    const originalHTML = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    button.disabled = true;
+    
+    fetch(`/admin/backup/restore/${backupId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+        
+        if (data.success) {
+            showNotification(`✅ Restauration terminée: ${backupId}\n📦 Composants: ${data.restored_components.join(', ')}`, 'success');
+            // Redirection recommandée après restauration
+            setTimeout(() => {
+                if (confirm('Restauration terminée. Redémarrer l\'application pour appliquer les changements ?')) {
+                    window.location.href = '/';
+                }
+            }, 3000);
+        } else {
+            showNotification('❌ Erreur restauration: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+        showNotification('❌ Erreur réseau: ' + error, 'danger');
+    });
+}
+
+function deleteBackup(backupId) {
+    if (!confirm(`⚠️ Supprimer définitivement la sauvegarde ${backupId} ?\n\nCette action est IRRÉVERSIBLE.`)) {
+        return;
+    }
+    
+    fetch(`/admin/backup/delete/${backupId}`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('✅ Sauvegarde supprimée: ' + backupId, 'info');
+            // Supprimer la ligne du tableau
+            const row = event.target.closest('tr');
+            row.remove();
+        } else {
+            showNotification('❌ Erreur suppression: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        showNotification('❌ Erreur réseau: ' + error, 'danger');
+    });
+}
+
+function showBackupDetails(backupId) {
+    // Ouvrir le modal
+    const modal = new bootstrap.Modal(document.getElementById('backupDetailsModal'));
+    modal.show();
+    
+    // Charger les détails
+    fetch(`/admin/backup/details/${backupId}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const details = data.details;
+            let html = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>📋 Informations Générales</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>ID:</strong></td><td><code>${details.backup_id}</code></td></tr>
+                            <tr><td><strong>Date:</strong></td><td>${details.timestamp}</td></tr>
+                            <tr><td><strong>Description:</strong></td><td>${details.description}</td></tr>
+                            <tr><td><strong>Statut:</strong></td><td><span class="badge bg-success">${details.status}</span></td></tr>
+                            <tr><td><strong>Version:</strong></td><td>${details.version}</td></tr>
+                            <tr><td><strong>Taille:</strong></td><td>${details.total_size_mb} MB</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>📁 Fichiers Inclus</h6>
+                        <ul class="list-group list-group-flush">
+            `;
+            
+            if (details.files) {
+                Object.entries(details.files).forEach(([component, filename]) => {
+                    let icon = '📄';
+                    if (component === 'database') icon = '📊';
+                    else if (component === 'encryption_keys') icon = '🔐';
+                    else if (component === 'scan_evidences') icon = '🔍';
+                    else if (component === 'application_config') icon = '⚙️';
+                    
+                    html += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                        ${icon} ${component}
+                        <small class="text-muted">${filename}</small>
+                    </li>`;
+                });
+            }
+            
+            html += `
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <h6>🛠️ Actions</h6>
+                    <button class="btn btn-warning me-2" onclick="restoreBackup('${details.backup_id}')">
+                        <i class="fas fa-undo"></i> Restaurer cette sauvegarde
+                    </button>
+                    <button class="btn btn-danger" onclick="deleteBackup('${details.backup_id}')">
+                        <i class="fas fa-trash"></i> Supprimer
+                    </button>
+                </div>
+            `;
+            
+            document.getElementById('backup-details-content').innerHTML = html;
+        } else {
+            document.getElementById('backup-details-content').innerHTML = 
+                '<div class="alert alert-danger">❌ Erreur: ' + data.error + '</div>';
+        }
+    })
+    .catch(error => {
+        document.getElementById('backup-details-content').innerHTML = 
+            '<div class="alert alert-danger">❌ Erreur réseau: ' + error + '</div>';
+    });
+}
+
+function refreshBackupList() {
+    location.reload();
+}
+
+function showNotification(message, type) {
+    // Créer notification Bootstrap
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 350px; white-space: pre-line;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // Auto-remove après 8 secondes
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 8000);
+}
+
+// Auto-refresh status toutes les 30 secondes
+setInterval(() => {
+    // Optionnel: rafraîchir le statut MinIO
+    console.log('Status check...');
+}, 30000);
+</script>
+
+{% endblock %}

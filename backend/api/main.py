@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
 from auth import login_required, admin_required
+from security.backup.backup_service import BackupService
 import logging
 
 logger = logging.getLogger('toolbox.main')
@@ -160,3 +161,237 @@ def api_stats():
     except Exception as e:
         logger.error(f"Erreur API stats: {e}")
         return {'success': False, 'error': str(e)}, 500
+
+
+
+# ===== ROUTES DE GESTION DES SAUVEGARDES (ADMIN) =====
+
+@main_bp.route('/admin/backups')
+@admin_required
+def backup_management():
+    """Interface de gestion des sauvegardes MinIO"""
+    try:
+        if hasattr(current_app, 'minio_client') and current_app.minio_client.is_available():
+            backup_service = BackupService(current_app.minio_client.get_client(), current_app.db)
+            backups = backup_service.list_backups()
+            storage_stats = backup_service.get_storage_stats()
+            
+            return render_template('admin/backups.html', 
+                                 backups=backups, 
+                                 storage_stats=storage_stats,
+                                 minio_status=current_app.minio_client.get_status())
+        else:
+            flash('MinIO non disponible', 'danger')
+            return render_template('admin/backups.html', 
+                                 backups=[], 
+                                 storage_stats={},
+                                 minio_status={'available': False})
+    except Exception as e:
+        logger.error(f"Erreur gestion sauvegardes: {e}")
+        flash(f'Erreur: {e}', 'danger')
+        return render_template('admin/backups.html', 
+                             backups=[], 
+                             storage_stats={},
+                             minio_status={'available': False})
+
+@main_bp.route('/admin/backup/create', methods=['POST'])
+@admin_required  
+def create_backup():
+    """Créer une sauvegarde complète"""
+    try:
+        if not hasattr(current_app, 'minio_client') or not current_app.minio_client.is_available():
+            return jsonify({
+                'success': False,
+                'error': 'MinIO non disponible'
+            }), 503
+        
+        description = request.json.get('description', 'Manual backup') if request.is_json else request.form.get('description', 'Manual backup')
+        
+        backup_service = BackupService(current_app.minio_client.get_client(), current_app.db)
+        result = backup_service.create_full_backup(description)
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'message': f"Sauvegarde créée: {result['backup_id']}",
+                'backup_id': result['backup_id'],
+                'files_count': result.get('files_count', 0)
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erreur inconnue')
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Erreur création sauvegarde: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main_bp.route('/admin/backup/restore/<backup_id>', methods=['POST'])
+@admin_required
+def restore_backup(backup_id: str):
+    """Restaurer une sauvegarde"""
+    try:
+        if not hasattr(current_app, 'minio_client') or not current_app.minio_client.is_available():
+            return jsonify({
+                'success': False,
+                'error': 'MinIO non disponible'
+            }), 503
+        
+        backup_service = BackupService(current_app.minio_client.get_client(), current_app.db)
+        result = backup_service.restore_backup(backup_id)
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'message': f"Sauvegarde restaurée: {backup_id}",
+                'restored_components': result.get('restored_components', [])
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erreur inconnue')
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Erreur restauration: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main_bp.route('/admin/backup/delete/<backup_id>', methods=['DELETE'])
+@admin_required
+def delete_backup(backup_id: str):
+    """Supprimer une sauvegarde"""
+    try:
+        if not hasattr(current_app, 'minio_client') or not current_app.minio_client.is_available():
+            return jsonify({
+                'success': False,
+                'error': 'MinIO non disponible'
+            }), 503
+        
+        backup_service = BackupService(current_app.minio_client.get_client(), current_app.db)
+        success = backup_service.delete_backup(backup_id)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f"Sauvegarde supprimée: {backup_id}"
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Impossible de supprimer la sauvegarde'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Erreur suppression backup: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main_bp.route('/admin/backup/details/<backup_id>')
+@admin_required
+def backup_details(backup_id: str):
+    """Détails d'une sauvegarde"""
+    try:
+        if not hasattr(current_app, 'minio_client') or not current_app.minio_client.is_available():
+            return jsonify({
+                'success': False,
+                'error': 'MinIO non disponible'
+            }), 503
+        
+        backup_service = BackupService(current_app.minio_client.get_client(), current_app.db)
+        details = backup_service.get_backup_details(backup_id)
+        
+        if details:
+            # Ajouter la taille
+            size = backup_service.get_backup_size(backup_id)
+            details['total_size_bytes'] = size
+            details['total_size_mb'] = round(size / (1024 * 1024), 2)
+            
+            return jsonify({
+                'success': True,
+                'details': details
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Sauvegarde non trouvée'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Erreur détails backup: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ===== ROUTES DE GESTION DES CLÉS (ADMIN) =====
+
+@main_bp.route('/admin/security')
+@admin_required
+def security_management():
+    """Interface de gestion de la sécurité"""
+    try:
+        security_status = current_app.db.get_security_status() if hasattr(current_app.db, 'get_security_status') else {}
+        
+        return render_template('admin/security.html', 
+                             security_status=security_status)
+    except Exception as e:
+        logger.error(f"Erreur gestion sécurité: {e}")
+        return render_template('admin/security.html', 
+                             security_status={})
+
+@main_bp.route('/admin/security/test-encryption', methods=['POST'])
+@admin_required
+def test_encryption():
+    """Tester le système de chiffrement"""
+    try:
+        if hasattr(current_app.db, 'test_encryption'):
+            success = current_app.db.test_encryption()
+            return jsonify({
+                'success': success,
+                'message': 'Test de chiffrement réussi' if success else 'Test de chiffrement échoué'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Service de chiffrement non disponible'
+            }), 503
+            
+    except Exception as e:
+        logger.error(f"Erreur test chiffrement: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main_bp.route('/admin/security/rotate-key', methods=['POST'])
+@admin_required
+def rotate_encryption_key():
+    """Rotation de la clé de chiffrement"""
+    try:
+        if hasattr(current_app.db, 'crypto_service') and current_app.db.crypto_service:
+            success = current_app.db.crypto_service.rotate_encryption_key()
+            return jsonify({
+                'success': success,
+                'message': 'Rotation de clé réussie' if success else 'Rotation de clé échouée'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Service de chiffrement non disponible'
+            }), 503
+            
+    except Exception as e:
+        logger.error(f"Erreur rotation clé: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
