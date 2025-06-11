@@ -38,7 +38,18 @@ def create_app(config_name=None):
     
     # Initialiser l'authentification
     auth_manager = AuthManager(db_manager)
-    
+
+    try:
+        minio_client = MinIOClient()
+        if minio_client.is_available():
+            logger.info("🗂️ MinIO disponible - Services de sécurité activés")
+        else:
+            logger.warning("⚠️ MinIO non disponible - Fonctionnement en mode dégradé")
+        app.minio_client = minio_client
+    except Exception as e:
+        logger.error(f"❌ Erreur initialisation MinIO: {e}")
+        app.minio_client = None
+
     # Rendre disponibles globalement
     app.db = db_manager
     app.auth = auth_manager
@@ -107,6 +118,39 @@ def register_blueprints(app):
     app.register_blueprint(huntkit_bp, url_prefix='/huntkit')
 
 
+def log_services_status(app):
+    """Affiche le statut des services au démarrage"""
+    logger.info("=== STATUT DES SERVICES ===")
+    
+    # PostgreSQL
+    try:
+        stats = app.db.get_stats()
+        logger.info("✅ PostgreSQL: Opérationnel")
+    except Exception as e:
+        logger.error(f"❌ PostgreSQL: {e}")
+    
+    # MinIO
+    if hasattr(app, 'minio_client') and app.minio_client:
+        status = app.minio_client.get_status()
+        if status['available']:
+            logger.info(f"✅ MinIO: Opérationnel ({len(status['buckets'])} buckets)")
+        else:
+            logger.warning("⚠️ MinIO: Non disponible")
+    else:
+        logger.warning("⚠️ MinIO: Non configuré")
+    
+    # Services de sécurité
+    if hasattr(app.db, 'crypto_service') and app.db.crypto_service:
+        if app.db.crypto_service.is_available():
+            logger.info("✅ Chiffrement: Opérationnel")
+        else:
+            logger.warning("⚠️ Chiffrement: Non disponible")
+    else:
+        logger.warning("⚠️ Chiffrement: Non configuré")
+    
+    logger.info("=== FIN STATUT ===")
+
+
 def register_error_handlers(app):
     """Enregistre les gestionnaires d'erreur"""
     
@@ -131,8 +175,9 @@ def register_template_helpers(app):
         """Injecte les informations utilisateur dans tous les templates"""
         return {
             'current_user': app.auth.get_current_user(),
-            'app_name': 'Toolbox Cybersécurité',
-            'app_version': '2.0'
+            'app_name': 'Toolbox Cybersécurité ESI M1',
+            'app_version': '2.0',
+            'minio_available': hasattr(app, 'minio_client') and app.minio_client and app.minio_client.is_available()
         }
 
 # Point d'entrée principal

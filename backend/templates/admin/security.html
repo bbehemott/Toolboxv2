@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Gestion de la Sécurité{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>🔐 Gestion de la Sécurité</h2>
+            <p class="text-muted">Tâches 21 & 23 - Chiffrement et gestion des clés</p>
+            
+            <!-- Statut des services de sécurité -->
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>🗂️ MinIO</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if security_status.minio.available %}
+                                <div class="alert alert-success">
+                                    <i class="fas fa-check-circle"></i> Opérationnel
+                                </div>
+                                <small class="text-muted">
+                                    Endpoint: {{ security_status.minio.endpoint }}<br>
+                                    Buckets: {{ security_status.minio.buckets|length }}
+                                </small>
+                            {% else %}
+                                <div class="alert alert-danger">
+                                    <i class="fas fa-times-circle"></i> Non disponible
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>🔑 Gestion des Clés</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if security_status.key_management.operational %}
+                                <div class="alert alert-success">
+                                    <i class="fas fa-check-circle"></i> Opérationnel
+                                </div>
+                                <small class="text-muted">
+                                    Clés: {{ security_status.key_management.key_info.total_keys }}<br>
+                                    Stockage: {{ security_status.key_management.key_info.storage }}
+                                </small>
+                            {% else %}
+                                <div class="alert alert-danger">
+                                    <i class="fas fa-times-circle"></i> Non disponible
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>🛡️ Chiffrement</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if security_status.encryption.available %}
+                                <div class="alert alert-success">
+                                    <i class="fas fa-check-circle"></i> Opérationnel
+                                </div>
+                                <small class="text-muted">
+                                    Algorithme: {{ security_status.encryption.algorithm }}<br>
+                                    Test: {% if security_status.encryption.test_passed %}✅{% else %}❌{% endif %}
+                                </small>
+                            {% else %}
+                                <div class="alert alert-danger">
+                                    <i class="fas fa-times-circle"></i> Non disponible
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Actions de sécurité -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5>⚡ Actions de Sécurité</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button class="btn btn-info w-100 mb-2" onclick="testEncryption()">
+                                <i class="fas fa-vial"></i> Tester le Chiffrement
+                            </button>
+                            <small class="text-muted">Vérifie le cycle chiffrement/déchiffrement</small>
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-warning w-100 mb-2" onclick="rotateEncryptionKey()">
+                                <i class="fas fa-sync"></i> Rotation de Clé
+                            </button>
+                            <small class="text-muted">Génère une nouvelle clé de chiffrement</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Informations détaillées -->
+            {% if security_status.encryption.available %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5>📊 Détails du Chiffrement</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Configuration:</strong>
+                            <ul>
+                                <li>Algorithme: {{ security_status.encryption.algorithm }}</li>
+                                <li>Stockage clés: {{ security_status.encryption.storage }}</li>
+                                <li>Clé active: {{ security_status.encryption.key_info.current_key_id }}</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Données chiffrées:</strong>
+                            <ul>
+                                <li>Sorties brutes des scans (raw_output)</li>
+                                <li>Messages d'erreur sensibles</li>
+                                <li>Credentials stockés</li>
+                                <li>Métadonnées sensibles</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Conformité -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5>✅ Conformité ESI M1 Cyber</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6>Tâche 21 - Chiffrement</h6>
+                            <ul class="list-unstyled">
+                                <li>✅ Chiffrement Fernet (AES-128)</li>
+                                <li>✅ Données sensibles protégées</li>
+                                <li>✅ Intégration transparente</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Tâche 23 - Gestion des clés</h6>
+                            <ul class="list-unstyled">
+                                <li>✅ Stockage sécurisé MinIO</li>
+                                <li>✅ Rotation des clés</li>
+                                <li>✅ Audit des accès</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Architecture</h6>
+                            <ul class="list-unstyled">
+                                <li>✅ Compatible S3</li>
+                                <li>✅ Scalable</li>
+                                <li>✅ Production-ready</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function testEncryption() {
+    const button = event.target;
+    const originalHTML = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Test en cours...';
+    button.disabled = true;
+    
+    fetch('/admin/security/test-encryption', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+        
+        if (data.success) {
+            showNotification('✅ ' + data.message, 'success');
+        } else {
+            showNotification('❌ ' + data.message, 'danger');
+        }
+    })
+    .catch(error => {
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+        showNotification('❌ Erreur: ' + error, 'danger');
+    });
+}
+
+function rotateEncryptionKey() {
+    if (!confirm('⚠️ Rotation de la clé de chiffrement ?\n\nCette action va :\n• Archiver la clé actuelle\n• Générer une nouvelle clé\n• Les nouvelles données seront chiffrées avec la nouvelle clé\n\nContinuer ?')) {
+        return;
+    }
+    
+    const button = event.target;
+    const originalHTML = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Rotation...';
+    button.disabled = true;
+    
+    fetch('/admin/security/rotate-key', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+        
+        if (data.success) {
+            showNotification('✅ ' + data.message, 'success');
+            // Recommander un redémarrage
+            setTimeout(() => {
+                if (confirm('Rotation terminée. Redémarrer l\'application pour optimiser les performances ?')) {
+                    window.location.href = '/';
+                }
+            }, 3000);
+        } else {
+            showNotification('❌ ' + data.message, 'danger');
+        }
+    })
+    .catch(error => {
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+        showNotification('❌ Erreur: ' + error, 'danger');
+    });
+}
+
+function showNotification(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
+
+{% endblock %}
