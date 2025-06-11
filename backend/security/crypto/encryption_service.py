@@ -3,7 +3,7 @@ Service de chiffrement utilisant les clés MinIO - Tâche 21
 Intégré avec l'architecture Flask + PostgreSQL existante
 """
 from cryptography.fernet import Fernet
-from key_management import KeyManagementService
+from ..key_management.key_manager import KeyManagementService
 from typing import Optional, Dict
 import logging
 

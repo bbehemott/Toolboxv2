@@ -281,13 +281,13 @@ class DatabaseManager:
         """Met à jour le statut d'une tâche avec chiffrement automatique"""
         try:
             # ===== NOUVEAU: Chiffrer raw_output automatiquement =====
-            if raw_output:
-                raw_output = self._encrypt_if_needed(raw_output, "raw_output")
-            
+            if raw_output and self.crypto_service:
+                raw_output = self.crypto_service.encrypt_sensitive_data(raw_output, "raw_output")
             # ===== NOUVEAU: Chiffrer error_message si sensible =====
-            if error_message and len(error_message) > 100:  # Messages d'erreur longs potentiellement sensibles
-                error_message = self._encrypt_if_needed(error_message, "error_message")
-            
+            if error_message and len(error_message) > 100 and self.crypto_service:
+                error_message = self.crypto_service.encrypt_sensitive_data(error_message, "error_message")
+
+
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
