@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional, Union
 from contextlib import contextmanager
+from security import MinIOClient, KeyManagementService, EncryptionService
 
 logger = logging.getLogger('toolbox.database')
 
@@ -16,7 +17,21 @@ class DatabaseManager:
         self.database_url = database_url
         logger.info(f"🐘 Connexion PostgreSQL: {database_url.split('@')[1] if '@' in database_url else 'localhost'}")
         self.init_database()
-    
+        try:
+            self.minio_client = MinIOClient()
+            if self.minio_client.is_available():
+                self.key_manager = KeyManagementService(self.minio_client.get_client())
+                self.crypto_service = EncryptionService(self.key_manager)
+                logger.info("🔐 Services de sécurité MinIO initialisés")
+            else:
+                logger.warning("⚠️ MinIO non disponible - chiffrement désactivé")
+                self.crypto_service = None
+                self.key_manager = None
+        except Exception as e:
+            logger.error(f"❌ Erreur init sécurité MinIO: {e}")
+            self.crypto_service = None
+            self.key_manager = None
+
     @contextmanager
     def get_connection(self):
         """Context manager pour PostgreSQL uniquement"""
@@ -262,43 +277,58 @@ class DatabaseManager:
             raise
     
     def update_task_status(self, task_id: str, status: str, progress: int = None,
-                          result_summary: str = None, error_message: str = None):
-        """Met à jour le statut d'une tâche"""
+                          result_summary: str = None, error_message: str = None, raw_output: str = None):
+        """Met à jour le statut d'une tâche avec chiffrement automatique"""
         try:
+            # ===== NOUVEAU: Chiffrer raw_output automatiquement =====
+            if raw_output:
+                raw_output = self._encrypt_if_needed(raw_output, "raw_output")
+            
+            # ===== NOUVEAU: Chiffrer error_message si sensible =====
+            if error_message and len(error_message) > 100:  # Messages d'erreur longs potentiellement sensibles
+                error_message = self._encrypt_if_needed(error_message, "error_message")
+            
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                updates = ['status = %s']
-                params = [status]
+                update_fields = ['status = %s', 'updated_at = CURRENT_TIMESTAMP']
+                values = [status]
                 
                 if progress is not None:
-                    updates.append('progress = %s')
-                    params.append(progress)
+                    update_fields.append('progress = %s')
+                    values.append(progress)
                 
                 if result_summary:
-                    updates.append('result_summary = %s')
-                    params.append(result_summary)
+                    update_fields.append('result_summary = %s')
+                    values.append(result_summary)
                 
                 if error_message:
-                    updates.append('error_message = %s')
-                    params.append(error_message)
+                    update_fields.append('error_message = %s')
+                    values.append(error_message)
                 
-                if status in ['completed', 'failed', 'cancelled']:
-                    updates.append('completed_at = CURRENT_TIMESTAMP')
+                if raw_output:
+                    update_fields.append('raw_output = %s')
+                    values.append(raw_output)
                 
-                query = f"UPDATE tasks SET {', '.join(updates)} WHERE task_id = %s"
-                params.append(task_id)
+                # Compléter la requête
+                if status == 'completed':
+                    update_fields.append('completed_at = CURRENT_TIMESTAMP')
                 
-                cursor.execute(query, params)
+                values.append(task_id)
+                
+                cursor.execute(f'''
+                    UPDATE tasks SET {', '.join(update_fields)}
+                    WHERE task_id = %s
+                ''', values)
+                
                 conn.commit()
+                logger.debug(f"📋 Tâche mise à jour: {task_id} → {status}")
                 
-                if cursor.rowcount > 0:
-                    logger.debug(f"📊 Tâche {task_id} mise à jour: {status}")
-                else:
-                    logger.warning(f"⚠️ Tâche {task_id} non trouvée pour mise à jour")
         except Exception as e:
             logger.error(f"❌ Erreur mise à jour tâche {task_id}: {e}")
-            
+            raise
+    
+
     def get_tasks(self, user_id: int = None, include_hidden: bool = False, 
                   limit: int = 50) -> List[Dict]:
         """Récupère les tâches avec filtres PostgreSQL optimisés"""
@@ -507,3 +537,64 @@ class DatabaseManager:
                     logger.debug(f"👥 {user_count} utilisateurs déjà présents")
         except Exception as e:
             logger.error(f"❌ Erreur création admin par défaut: {e}")
+
+    def _encrypt_if_needed(self, data: str, data_type: str = "general") -> str:
+        """Chiffre si le service est disponible"""
+        if self.crypto_service and data and len(data) > 0:
+            return self.crypto_service.encrypt_sensitive_data(data, data_type)
+        return data
+    
+    def _decrypt_if_needed(self, encrypted_data: str, data_type: str = "general") -> str:
+        """Déchiffre si nécessaire"""
+        if self.crypto_service and encrypted_data:
+            return self.crypto_service.decrypt_sensitive_data(encrypted_data, data_type)
+        return encrypted_data
+    
+    def get_security_status(self) -> Dict:
+        """Statut des services de sécurité"""
+        return {
+            'minio': self.minio_client.get_status() if self.minio_client else {'available': False},
+            'encryption': self.crypto_service.get_encryption_status() if self.crypto_service else {'available': False},
+            'key_management': self.key_manager.get_status() if self.key_manager else {'available': False}
+        }
+
+
+    def test_encryption(self) -> bool:
+        """Teste le système de chiffrement"""
+        if not self.crypto_service:
+            logger.info("ℹ️ Service de chiffrement non disponible")
+            return False
+        
+        return self.crypto_service.test_encryption_cycle()
+
+    def get_task_details(self, task_id: str) -> Optional[Dict]:
+        """Récupère les détails d'une tâche avec déchiffrement automatique"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute('''
+                    SELECT * FROM tasks WHERE task_id = %s
+                ''', (task_id,))
+                
+                task = cursor.fetchone()
+                if task:
+                    task_dict = dict(task)
+                    
+                    # Déchiffrer les données sensibles si service disponible
+                    if hasattr(self, 'crypto_service') and self.crypto_service:
+                        if task_dict.get('raw_output'):
+                            task_dict['raw_output'] = self.crypto_service.decrypt_sensitive_data(
+                                task_dict['raw_output'], "raw_output"
+                            )
+                        
+                        if task_dict.get('error_message') and len(task_dict['error_message']) > 100:
+                            task_dict['error_message'] = self.crypto_service.decrypt_sensitive_data(
+                                task_dict['error_message'], "error_message"
+                            )
+                    
+                    return task_dict
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération tâche {task_id}: {e}")
+            return None

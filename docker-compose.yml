@@ -179,6 +179,22 @@ services:
       - "12201:12201/udp" # GELF UDP
     container_name: toolbox-graylog
 
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9090:9000"    # API S3 (éviter conflit avec Graylog 9000)
+      - "9091:9001"    # Console web MinIO
+    environment:
+      - MINIO_ROOT_USER=toolbox_admin
+      - MINIO_ROOT_PASSWORD=toolbox_secret_2024
+    volumes:
+      - minio_data:/data
+    networks:
+      toolbox-network:
+        ipv4_address: 172.20.0.40
+    container_name: toolbox-minio
+
   # DVWA (Damn Vulnerable Web Application) pour tests
   dvwa:
     image: vulnerables/web-dvwa
@@ -219,3 +235,4 @@ volumes:
   postgres_data:
   tools_data:
   wordlists_data:
+  minio_data:
