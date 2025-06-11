@@ -107,12 +107,13 @@ class BackupService:
             
             # Commande pg_dump via Docker
             dump_command = [
-                'pg_dump', 
-                '-h', 'postgres', 
-                '-U', 'toolbox_user', 
-                '-d', 'toolbox'
+                'docker', 'exec', 'toolbox-postgres',
+                'pg_dump', '-U', 'toolbox_user', '-d', 'toolbox'
             ]
-            
+
+            env = os.environ.copy()
+            env['PGPASSWORD'] = 'toolbox_password'
+
             logger.debug(f"🔧 Exécution: {' '.join(dump_command)}")
             
             with open(temp_path, 'w') as f:
@@ -251,17 +252,20 @@ class BackupService:
                 ],
                 'notes': 'Configuration backup for ESI M1 Cyber toolbox'
             }
-            
+
             config_json = json.dumps(config_data, indent=2)
             backup_name = f"{backup_id}_config.json"
             
+            from io import BytesIO
+            config_bytes = config_json.encode()
             self.minio.put_object(
                 self.backup_bucket,
                 backup_name,
-                config_json.encode(),
-                len(config_json.encode())
+                BytesIO(config_bytes),
+                len(config_bytes)
             )
-            
+
+
             logger.info(f"⚙️ Sauvegarde config terminée: {backup_name}")
             return backup_name
             
