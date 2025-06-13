@@ -88,19 +88,58 @@
         </div>
     </div>
 
-    <!-- Graphiques et tendances -->
+    <!-- Logs et Activité Récente -->
     <div class="row mb-4">
         <div class="col-md-6">
             <div class="card">
                 <div class="card-header">
-                    <h5>📈 Activité Récente</h5>
+                    <h6>📊 Logs Détaillés</h6>
                 </div>
                 <div class="card-body">
-                    <canvas id="activity-chart" width="400" height="200"></canvas>
+                    <div class="row text-center mb-3">
+                        <div class="col-6">
+                            <h5 id="logs-total-count">--</h5>
+                            <small class="text-muted">Messages totaux</small>
+                        </div>
+                        <div class="col-6">
+                            <h5 id="logs-recent-count">--</h5>
+                            <small class="text-muted">Dernière heure</small>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <canvas id="logs-chart" width="100" height="60"></canvas>
+                    </div>
+                    <div id="logs-levels" class="mt-3">
+                        <!-- Niveaux de logs -->
+                    </div>
                 </div>
             </div>
         </div>
+        
         <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6>📈 Activité Récente</h6>
+                </div>
+                <div class="card-body">
+                    <div id="recent-activity" class="activity-feed">
+                        <div class="text-center text-muted">
+                            <small>Chargement de l'activité...</small>
+                        </div>
+                    </div>
+                    <div class="mt-3 text-center">
+                        <a href="{{ url_for('tasks.tasks_dashboard') }}" class="btn btn-outline-primary btn-sm">
+                            📊 Voir toutes les tâches
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stockage -->
+    <div class="row mb-4">
+        <div class="col-md-12">
             <div class="card">
                 <div class="card-header">
                     <h5>🗂️ Stockage</h5>
@@ -234,7 +273,7 @@ function refreshDashboard() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                updateServicesStatus(data.services, data.summary);
+                updateServicesStatus(data.services);
             } else {
                 console.error('❌ Erreur récupération services:', data.error);
             }
@@ -242,51 +281,74 @@ function refreshDashboard() {
         .catch(error => {
             console.error('❌ Erreur réseau services:', error);
         });
+    
+    // Mettre à jour l'activité récente
+    updateRecentActivity();
 }
 
 function updateSystemMetrics(system) {
-    if (system.error) {
-        console.warn('⚠️ Erreur métriques système:', system.error);
-        return;
-    }
+    if (!system) return;
     
     // CPU
-    const cpuPercent = Math.round(system.cpu_percent);
-    document.getElementById('cpu-progress').style.width = cpuPercent + '%';
-    document.getElementById('cpu-value').textContent = cpuPercent + '%';
-    document.getElementById('cpu-progress').className = `progress-bar ${getCpuClass(cpuPercent)}`;
+    const cpuPercent = system.cpu_percent || 0;
+    updateProgressBar('cpu-progress', 'cpu-value', cpuPercent);
     
     // Mémoire
-    const memoryPercent = Math.round(system.memory.percent);
-    document.getElementById('memory-progress').style.width = memoryPercent + '%';
-    document.getElementById('memory-value').textContent = memoryPercent + '%';
-    document.getElementById('memory-progress').className = `progress-bar ${getMemoryClass(memoryPercent)}`;
+    const memoryPercent = system.memory ? system.memory.percent || 0 : 0;
+    updateProgressBar('memory-progress', 'memory-value', memoryPercent);
     
     // Disque
-    const diskPercent = Math.round(system.disk.percent);
-    document.getElementById('disk-progress').style.width = diskPercent + '%';
-    document.getElementById('disk-value').textContent = diskPercent + '%';
-    document.getElementById('disk-progress').className = `progress-bar ${getDiskClass(diskPercent)}`;
+    const diskPercent = system.disk ? system.disk.percent || 0 : 0;
+    updateProgressBar('disk-progress', 'disk-value', diskPercent);
 }
 
-function updateServicesStatus(services, summary) {
+function updateProgressBar(progressId, valueId, percent) {
+    const progressBar = document.getElementById(progressId);
+    const valueSpan = document.getElementById(valueId);
+    
+    if (progressBar) {
+        progressBar.style.width = `${percent}%`;
+        
+        // Couleur selon le pourcentage
+        progressBar.className = 'progress-bar';
+        if (percent > 90) {
+            progressBar.classList.add('bg-danger');
+        } else if (percent > 75) {
+            progressBar.classList.add('bg-warning');
+        } else {
+            progressBar.classList.add('bg-success');
+        }
+    }
+    
+    if (valueSpan) {
+        valueSpan.textContent = `${Math.round(percent)}%`;
+        valueSpan.className = 'badge';
+        if (percent > 90) {
+            valueSpan.classList.add('bg-danger');
+        } else if (percent > 75) {
+            valueSpan.classList.add('bg-warning');
+        } else {
+            valueSpan.classList.add('bg-secondary');
+        }
+    }
+}
+
+function updateServicesStatus(services) {
     const servicesGrid = document.getElementById('services-grid');
     const servicesLoading = document.getElementById('services-loading');
     
-    // Masquer le loading
+    if (!servicesGrid || !services) return;
+    
     servicesLoading.classList.add('d-none');
     servicesGrid.classList.remove('d-none');
-    
-    // Vider la grille
     servicesGrid.innerHTML = '';
     
     services.forEach(service => {
         const serviceCard = document.createElement('div');
-        serviceCard.className = 'col-md-4 col-lg-3 mb-3';
+        serviceCard.className = 'col-md-3 mb-3';
         
         const statusClass = service.status === 'healthy' ? 'success' : 
-                           service.status === 'missing' ? 'danger' : 'warning';
-        
+                          service.status === 'unhealthy' ? 'danger' : 'warning';
         const statusIcon = service.status === 'healthy' ? '✅' : 
                           service.status === 'missing' ? '❌' : '⚠️';
         
@@ -331,9 +393,180 @@ function updateStorageInfo(storage) {
 }
 
 function updateLogsStats(logs) {
-    if (logs.status === 'ok') {
-        document.getElementById('logs-count').textContent = logs.total_hits.toLocaleString();
+    console.log('📊 Mise à jour logs stats:', logs);
+    
+    if (logs && logs.status === 'ok') {
+        // Mettre à jour les compteurs
+        const totalLogs = logs.total_hits || 0;
+        document.getElementById('logs-count').textContent = totalLogs.toLocaleString();
+        document.getElementById('logs-total-count').textContent = totalLogs.toLocaleString();
+        
+        // Calculer les logs récents (dernière heure)
+        const recentLogs = logs.recent_activity ? 
+            logs.recent_activity.reduce((sum, bucket) => sum + (bucket.doc_count || 0), 0) : 0;
+        document.getElementById('logs-recent-count').textContent = recentLogs.toLocaleString();
+        
+        // Créer un mini graphique des logs
+        updateLogsChart(logs.recent_activity || []);
+        
+        // Afficher les niveaux de logs
+        updateLogsLevels(logs.log_levels || []);
+    } else {
+        document.getElementById('logs-count').textContent = 'N/A';
+        document.getElementById('logs-total-count').textContent = 'N/A';
+        document.getElementById('logs-recent-count').textContent = 'N/A';
+        console.warn('⚠️ Logs stats non disponibles:', logs);
     }
+}
+
+function updateLogsChart(recentActivity) {
+    const canvas = document.getElementById('logs-chart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Nettoyer le canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    if (recentActivity.length === 0) {
+        // Afficher "Pas de données"
+        ctx.fillStyle = '#6c757d';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Pas de données', width/2, height/2);
+        return;
+    }
+    
+    // Dessiner un graphique simple en barres
+    const maxValue = Math.max(...recentActivity.map(item => item.doc_count || 0));
+    const barWidth = width / recentActivity.length;
+    
+    ctx.fillStyle = '#0d6efd';
+    recentActivity.forEach((item, index) => {
+        const barHeight = maxValue > 0 ? (item.doc_count / maxValue) * height * 0.8 : 0;
+        const x = index * barWidth;
+        const y = height - barHeight;
+        
+        ctx.fillRect(x, y, barWidth - 2, barHeight);
+    });
+}
+
+function updateLogsLevels(logLevels) {
+    const container = document.getElementById('logs-levels');
+    if (!container) return;
+    
+    let html = '<div class="row">';
+    
+    logLevels.slice(0, 4).forEach(level => {
+        const levelClass = level.key === 'ERROR' ? 'danger' : 
+                          level.key === 'WARN' ? 'warning' : 
+                          level.key === 'INFO' ? 'info' : 'secondary';
+        
+        html += `
+            <div class="col-3 text-center">
+                <span class="badge bg-${levelClass}">${level.key}</span>
+                <div><small>${level.doc_count}</small></div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function updateRecentActivity() {
+    console.log('📈 Mise à jour activité récente...');
+    
+    // Récupérer les tâches récentes
+    fetch('/tasks/api/list?limit=10')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.tasks) {
+                displayRecentActivity(data.tasks);
+            } else {
+                console.warn('⚠️ Erreur récupération activité:', data.error);
+                showNoActivity();
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erreur activité récente:', error);
+            showNoActivity();
+        });
+}
+
+function displayRecentActivity(tasks) {
+    const container = document.getElementById('recent-activity');
+    if (!container) return;
+    
+    if (tasks.length === 0) {
+        showNoActivity();
+        return;
+    }
+    
+    // Filtrer les tâches récentes (moins de 24h)
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
+    const recentTasks = tasks.filter(task => {
+        const taskDate = new Date(task.started_at || task.created_at);
+        return taskDate > oneDayAgo;
+    }).slice(0, 5);
+    
+    if (recentTasks.length === 0) {
+        showNoActivity();
+        return;
+    }
+    
+    let html = '';
+    recentTasks.forEach(task => {
+        const status = task.status || 'unknown';
+        const statusIcon = status === 'completed' ? '✅' : 
+                          status === 'running' ? '🔄' : 
+                          status === 'failed' ? '❌' : '⏳';
+        
+        const timeAgo = getTimeAgo(new Date(task.started_at || task.created_at));
+        
+        html += `
+            <div class="activity-item mb-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <small><strong>${statusIcon} ${task.task_name || 'Tâche'}</strong></small>
+                        <br>
+                        <small class="text-muted">${task.target || 'N/A'}</small>
+                    </div>
+                    <small class="text-muted">${timeAgo}</small>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function showNoActivity() {
+    const container = document.getElementById('recent-activity');
+    if (container) {
+        container.innerHTML = `
+            <div class="text-center text-muted">
+                <small>📭 Aucune activité récente</small>
+            </div>
+        `;
+    }
+}
+
+function getTimeAgo(date) {
+    const now = new Date();
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}j`;
+    if (hours > 0) return `${hours}h`;
+    if (minutes > 0) return `${minutes}min`;
+    return 'maintenant';
 }
 
 function updateAlerts(alerts) {
@@ -352,29 +585,37 @@ function updateAlerts(alerts) {
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${alertClass} alert-dismissible fade show`;
         alertDiv.innerHTML = `
-            <strong>${alert.type === 'critical' ? '🚨' : '⚠️'} ${alert.type.toUpperCase()}:</strong> ${alert.message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <strong>${alert.type === 'critical' ? '🚨 CRITIQUE' : '⚠️ ATTENTION'}</strong> ${alert.message}
+            <small class="d-block mt-1">⏰ ${new Date(alert.timestamp).toLocaleString()}</small>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
         alertsContainer.appendChild(alertDiv);
     });
 }
 
-function getCpuClass(percent) {
-    if (percent < 50) return 'bg-success';
-    if (percent < 80) return 'bg-warning';
-    return 'bg-danger';
-}
-
-function getMemoryClass(percent) {
-    if (percent < 60) return 'bg-success';
-    if (percent < 85) return 'bg-warning';
-    return 'bg-danger';
-}
-
-function getDiskClass(percent) {
-    if (percent < 70) return 'bg-success';
-    if (percent < 90) return 'bg-warning';
-    return 'bg-danger';
-}
 </script>
+
+<style>
+.activity-feed {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.activity-item {
+    padding: 8px;
+    border-left: 3px solid #e9ecef;
+    border-radius: 4px;
+    background-color: #f8f9fa;
+}
+
+.activity-item:hover {
+    background-color: #e9ecef;
+}
+
+#logs-chart {
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+</style>
+
 {% endblock %}

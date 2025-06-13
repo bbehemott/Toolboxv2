@@ -106,20 +106,74 @@ def get_system_metrics():
 
 
 def get_services_status():
-    """Status des services Docker"""
+    """Status des services Docker - VERSION CORRIGÉE CONNECTIVITÉ"""
     services = []
     
-    # Services essentiels à surveiller
+    # Services essentiels à surveiller avec leurs vraies adresses Docker
     expected_services = [
-        {'name': 'toolbox-app-huntkit', 'port': 5000, 'description': 'Application principale'},
-        {'name': 'toolbox-graylog', 'port': 9000, 'description': 'Centralisation logs'},
-        {'name': 'toolbox-kibana', 'port': 5601, 'description': 'Exploration logs'},
-        {'name': 'toolbox-elasticsearch', 'port': 9200, 'description': 'Moteur de recherche'},
-        {'name': 'toolbox-postgres', 'port': 5432, 'description': 'Base de données'},
-        {'name': 'toolbox-redis', 'port': 6379, 'description': 'Cache & broker'},
-        {'name': 'toolbox-minio', 'port': 9090, 'description': 'Stockage sécurisé'},
-        {'name': 'toolbox-worker-huntkit', 'port': None, 'description': 'Worker Celery'},
-        {'name': 'toolbox-metricbeat', 'port': None, 'description': 'Collecte métriques'}
+        {
+            'name': 'toolbox-app-huntkit', 
+            'port': 5000, 
+            'description': 'Application principale',
+            'docker_host': 'app',  # Nom du service dans docker-compose
+            'external_port': 5000
+        },
+        {
+            'name': 'toolbox-graylog', 
+            'port': 9000, 
+            'description': 'Centralisation logs',
+            'docker_host': 'graylog',
+            'external_port': 9000
+        },
+        {
+            'name': 'toolbox-kibana', 
+            'port': 5601, 
+            'description': 'Exploration logs',
+            'docker_host': 'kibana',
+            'external_port': 5601
+        },
+        {
+            'name': 'toolbox-elasticsearch', 
+            'port': 9200, 
+            'description': 'Moteur de recherche',
+            'docker_host': 'elasticsearch',
+            'external_port': 9200
+        },
+        {
+            'name': 'toolbox-postgres', 
+            'port': 5432, 
+            'description': 'Base de données',
+            'docker_host': 'postgres',
+            'external_port': 5432
+        },
+        {
+            'name': 'toolbox-redis', 
+            'port': 6379, 
+            'description': 'Cache & broker',
+            'docker_host': 'redis',
+            'external_port': 6379
+        },
+        {
+            'name': 'toolbox-minio', 
+            'port': 9090, 
+            'description': 'Stockage sécurisé',
+            'docker_host': 'minio',
+            'external_port': 9090
+        },
+        {
+            'name': 'toolbox-worker-huntkit', 
+            'port': None, 
+            'description': 'Worker Celery',
+            'docker_host': 'worker',
+            'external_port': None
+        },
+        {
+            'name': 'toolbox-metricbeat', 
+            'port': None, 
+            'description': 'Collecte métriques',
+            'docker_host': 'metricbeat',
+            'external_port': None
+        }
     ]
     
     try:
@@ -134,15 +188,12 @@ def get_services_status():
                 if expected['name'] in container.name:
                     status = 'healthy' if container.status == 'running' else 'unhealthy'
                     
-                    # Test connectivité pour services avec port
+                    # Test connectivité CORRIGÉ - utiliser les noms Docker
                     connectivity = 'unknown'
                     if expected['port'] and container.status == 'running':
-                        try:
-                            response = requests.get(f"http://localhost:{expected['port']}", 
-                                                  timeout=2)
-                            connectivity = 'ok' if response.status_code < 500 else 'error'
-                        except:
-                            connectivity = 'unreachable'
+                        connectivity = test_service_connectivity(expected)
+                    elif expected['port'] is None:
+                        connectivity = 'n/a'
                     
                     services.append({
                         'name': expected['name'],
@@ -169,16 +220,12 @@ def get_services_status():
                 
     except Exception as e:
         logger.error(f"Erreur Docker: {e}")
-        # Fallback : test direct des ports
+        
+        # Fallback : test direct avec les bonnes adresses
         for expected in expected_services:
             if expected['port']:
-                try:
-                    response = requests.get(f"http://localhost:{expected['port']}", timeout=2)
-                    status = 'healthy' if response.status_code < 500 else 'unhealthy'
-                    connectivity = 'ok'
-                except:
-                    status = 'unhealthy'
-                    connectivity = 'unreachable'
+                connectivity = test_service_connectivity(expected)
+                status = 'healthy' if connectivity == 'ok' else 'unhealthy'
             else:
                 status = 'unknown'
                 connectivity = 'n/a'
@@ -194,6 +241,43 @@ def get_services_status():
     
     return services
 
+def test_service_connectivity(service_config):
+    """Test de connectivité pour un service - FONCTION CORRIGÉE"""
+    try:
+        # Détecter si on est dans un conteneur Docker
+        import os
+        in_docker = os.path.exists('/.dockerenv')
+        
+        if in_docker:
+            # Dans Docker : utiliser les noms de services
+            host = service_config['docker_host']
+            port = service_config['port']
+            test_url = f"http://{host}:{port}"
+        else:
+            # Hors Docker : utiliser localhost
+            port = service_config['external_port']
+            test_url = f"http://localhost:{port}"
+        
+        logger.debug(f"Test connectivité: {test_url}")
+        
+        # Test avec timeout court
+        response = requests.get(test_url, timeout=3)
+        
+        if response.status_code < 500:
+            return 'ok'
+        else:
+            return 'error'
+            
+    except requests.exceptions.ConnectionError:
+        return 'unreachable'
+    except requests.exceptions.Timeout:
+        return 'timeout'
+    except Exception as e:
+        logger.warning(f"Erreur test connectivité {service_config['name']}: {e}")
+        return 'error'
+
+
+
 def get_storage_metrics():
     """Métriques de stockage"""
     try:
@@ -208,38 +292,56 @@ def get_storage_metrics():
         logger.error(f"Erreur métriques stockage: {e}")
         return {'error': str(e)}
 
+
 def get_elasticsearch_storage():
-    """Stockage Elasticsearch"""
+    """Stockage Elasticsearch - VERSION CORRIGÉE"""
     try:
-        response = requests.get('http://localhost:9200/_cat/indices?format=json', timeout=5)
+        # Détecter l'environnement
+        import os
+        if os.path.exists('/.dockerenv'):
+            # Dans Docker
+            url = 'http://elasticsearch:9200/_cat/indices?format=json'
+        else:
+            # Hors Docker
+            url = 'http://localhost:9200/_cat/indices?format=json'
+        
+        response = requests.get(url, timeout=5)
         if response.status_code == 200:
             indices = response.json()
-            total_size = sum(int(idx.get('store.size', '0').replace('kb', '').replace('mb', '').replace('gb', '')) for idx in indices)
             return {
                 'indices_count': len(indices),
-                'total_size': total_size,
+                'total_size': sum(int(idx.get('store.size', '0b').replace('kb', '').replace('mb', '').replace('gb', '').replace('b', '') or 0) for idx in indices),
                 'status': 'ok'
             }
-    except:
-        pass
+    except Exception as e:
+        logger.debug(f"Erreur Elasticsearch storage: {e}")
     
     return {'status': 'unreachable'}
 
+
 def get_graylog_storage():
-    """Stockage Graylog"""
+    """Stockage Graylog - VERSION CORRIGÉE"""
     try:
-        response = requests.get('http://localhost:9000/api/count/total', 
-                              auth=('admin', 'admin'), timeout=5)
+        import os
+        if os.path.exists('/.dockerenv'):
+            # Dans Docker
+            url = 'http://graylog:9000/api/count/total'
+        else:
+            # Hors Docker
+            url = 'http://localhost:9000/api/count/total'
+        
+        response = requests.get(url, auth=('admin', 'admin'), timeout=5)
         if response.status_code == 200:
             data = response.json()
             return {
                 'messages_count': data.get('events', 0),
                 'status': 'ok'
             }
-    except:
-        pass
+    except Exception as e:
+        logger.debug(f"Erreur Graylog storage: {e}")
     
     return {'status': 'unreachable'}
+
 
 def get_database_storage():
     """Métriques base de données"""
@@ -266,41 +368,148 @@ def get_docker_volumes_storage():
     except:
         return {'status': 'error'}
 
+
 def get_recent_logs_stats():
-    """Statistiques des logs récents"""
-    try:
-        # Stats depuis Elasticsearch
-        response = requests.get('http://localhost:9200/graylog_*/_search', 
-                              json={
-                                  "size": 0,
-                                  "aggs": {
-                                      "recent_logs": {
-                                          "date_histogram": {
-                                              "field": "@timestamp",
-                                              "interval": "1h"
-                                          }
-                                      },
-                                      "log_levels": {
-                                          "terms": {
-                                              "field": "level",
-                                              "size": 10
-                                          }
-                                      }
-                                  }
-                              }, timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                'total_hits': data.get('hits', {}).get('total', {}).get('value', 0),
-                'recent_activity': data.get('aggregations', {}).get('recent_logs', {}).get('buckets', []),
-                'log_levels': data.get('aggregations', {}).get('log_levels', {}).get('buckets', []),
-                'status': 'ok'
-            }
-    except:
-        pass
+    """Statistiques des logs récents - VERSION CORRIGÉE CONNECTIVITÉ"""
+    logger.info("🔍 Récupération des statistiques de logs...")
     
-    return {'status': 'unreachable'}
+    # Détecter l'environnement
+    import os
+    in_docker = os.path.exists('/.dockerenv')
+    
+    # MÉTHODE 1: Essayer via Elasticsearch
+    try:
+        if in_docker:
+            es_base_url = 'http://elasticsearch:9200'
+        else:
+            es_base_url = 'http://localhost:9200'
+        
+        logger.info("📊 Tentative de connexion à Elasticsearch...")
+        
+        # Vérifier si Elasticsearch est accessible
+        health_response = requests.get(f'{es_base_url}/_cluster/health', timeout=3)
+        if health_response.status_code == 200:
+            logger.info("✅ Elasticsearch accessible")
+            
+            # Chercher les index Graylog
+            indices_response = requests.get(f'{es_base_url}/_cat/indices?format=json', timeout=3)
+            if indices_response.status_code == 200:
+                indices = indices_response.json()
+                graylog_indices = [idx for idx in indices if 'graylog' in idx.get('index', '').lower()]
+                
+                if graylog_indices:
+                    logger.info(f"📋 Trouvé {len(graylog_indices)} index Graylog")
+                    
+                    # Requête pour les statistiques détaillées
+                    search_response = requests.get(
+                        f'{es_base_url}/graylog_*/_search', 
+                        json={
+                            "size": 0,
+                            "query": {
+                                "range": {
+                                    "@timestamp": {
+                                        "gte": "now-24h"
+                                    }
+                                }
+                            },
+                            "aggs": {
+                                "recent_logs": {
+                                    "date_histogram": {
+                                        "field": "@timestamp",
+                                        "fixed_interval": "1h",
+                                        "min_doc_count": 0
+                                    }
+                                },
+                                "log_levels": {
+                                    "terms": {
+                                        "field": "level.keyword",
+                                        "size": 10,
+                                        "missing": "UNKNOWN"
+                                    }
+                                }
+                            }
+                        }, 
+                        timeout=5
+                    )
+                    
+                    if search_response.status_code == 200:
+                        data = search_response.json()
+                        total_hits = data.get('hits', {}).get('total', {})
+                        
+                        # Support pour différentes versions d'Elasticsearch
+                        if isinstance(total_hits, dict):
+                            total_count = total_hits.get('value', 0)
+                        else:
+                            total_count = total_hits or 0
+                        
+                        result = {
+                            'total_hits': total_count,
+                            'recent_activity': data.get('aggregations', {}).get('recent_logs', {}).get('buckets', []),
+                            'log_levels': data.get('aggregations', {}).get('log_levels', {}).get('buckets', []),
+                            'status': 'ok',
+                            'source': 'elasticsearch'
+                        }
+                        
+                        logger.info(f"✅ Stats Elasticsearch: {total_count} logs")
+                        return result
+    
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur Elasticsearch: {e}")
+    
+    # MÉTHODE 2: Essayer via l'API Graylog directement
+    try:
+        if in_docker:
+            graylog_base_url = 'http://graylog:9000'
+        else:
+            graylog_base_url = 'http://localhost:9000'
+        
+        logger.info("📊 Tentative de connexion à Graylog API...")
+        
+        # Test de connexion Graylog
+        graylog_response = requests.get(
+            f'{graylog_base_url}/api/system', 
+            auth=('admin', 'admin'), 
+            timeout=3
+        )
+        
+        if graylog_response.status_code == 200:
+            logger.info("✅ Graylog API accessible")
+            
+            # Récupérer le nombre total de messages via l'API Graylog
+            count_response = requests.get(
+                f'{graylog_base_url}/api/count/total', 
+                auth=('admin', 'admin'), 
+                timeout=5
+            )
+            
+            if count_response.status_code == 200:
+                count_data = count_response.json()
+                total_messages = count_data.get('events', 0)
+                
+                result = {
+                    'total_hits': total_messages,
+                    'recent_activity': [],  # Pas de données d'activité détaillées
+                    'log_levels': [],       # Pas de niveaux détaillés
+                    'status': 'ok',
+                    'source': 'graylog_api'
+                }
+                
+                logger.info(f"✅ Stats Graylog API: {total_messages} messages")
+                return result
+    
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur Graylog API: {e}")
+    
+    # AUCUN SERVICE ACCESSIBLE
+    logger.warning("⚠️ Aucun service de logs accessible - Retour N/A")
+    return {
+        'total_hits': 0,
+        'recent_activity': [],
+        'log_levels': [],
+        'status': 'unreachable',
+        'source': 'none'
+    }
+
 
 def get_active_alerts():
     """Alertes actives du système"""
