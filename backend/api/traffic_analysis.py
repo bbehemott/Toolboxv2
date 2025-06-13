@@ -45,27 +45,23 @@ class TrafficAnalysisModule:
             command = [
                 'tshark', '-i', 'any',
                 '-a', f'duration:{duration}',
-                '-f', f'net {target.split(".")[0]}.{target.split(".")[1]}.0.0/16',
                 '-w', temp_pcap
             ]
+            
             logger.info(f"📦 Commande exacte: {' '.join(command)}")
             logger.info(f"📁 Fichier temp: {temp_pcap}")
-        try:
-            # ... code ...
-            result = subprocess.run(command, capture_output=True, text=True, timeout=duration+10)
-        
-            # ✅ CES LIGNES DOIVENT ÊTRE INDENTÉES
-            logger.info(f"🔍 Return code: {result.returncode}")
-            logger.info(f"📤 STDOUT: {result.stdout}")
-            logger.info(f"❌ STDERR: {result.stderr}")
-
             logger.info(f"🔍 Début capture {target} pendant {duration}s")
+            
             result = subprocess.run(
                 command, 
                 capture_output=True, 
                 text=True,
                 timeout=duration + 10
             )
+            
+            logger.info(f"🔍 Return code: {result.returncode}")
+            logger.info(f"📤 STDOUT: {result.stdout}")
+            logger.info(f"❌ STDERR: {result.stderr}")
             
             if os.path.exists(temp_pcap) and os.path.getsize(temp_pcap) > 0:
                 # Sauvegarder de manière sécurisée
@@ -104,7 +100,8 @@ class TrafficAnalysisModule:
             # Nettoyer fichier temp si il reste
             if os.path.exists(temp_pcap):
                 os.remove(temp_pcap)
-    
+
+
     def forensic_analysis(self, pcap_reference):
         """Tâche 45 - Analyse forensique intégrée"""
         
@@ -137,34 +134,34 @@ class TrafficAnalysisModule:
             return {'success': False, 'error': str(e)}
     
     def _get_capture_stats(self, pcap_file):
-        """Stats PCAP - Gestion sécurisée"""
-        
-        # Si c'est une référence MinIO, télécharger temporairement
-        if pcap_file.startswith("minio://"):
-            temp_file = self.pcap_manager.get_pcap(pcap_file)
-            if not temp_file:
-                return {'packets': 0}
-            pcap_file = temp_file
-        
+        """Stats PCAP - Version regex"""
         try:
-            command = ['tshark', '-r', pcap_file, '-q', '-z', 'io,stat,0']
+            if not pcap_file.startswith("/"):
+                local_file = f"/app/data/pcap/{os.path.basename(pcap_file)}"
+            else:
+                local_file = pcap_file
+                
+            if not os.path.exists(local_file):
+                return {'packets': 0}
+            
+            command = ['tshark', '-r', local_file, '-q', '-z', 'io,stat,0']
             result = subprocess.run(command, capture_output=True, text=True, timeout=30)
             
             if result.returncode == 0:
-                for line in result.stdout.split('\n'):
-                    if 'frames' in line.lower():
-                        try:
-                            packets = int(line.split()[1])
-                            return {'packets': packets}
-                        except:
-                            pass
-            
+                # Chercher un pattern comme "     58 |"
+                import re
+                match = re.search(r'\|\s*(\d+)\s*\|\s*\d+\s*\|', result.stdout)
+                if match:
+                    packets = int(match.group(1))
+                    logger.info(f"✅ Paquets trouvés: {packets}")
+                    return {'packets': packets}
+                    
             return {'packets': 0}
             
         except Exception as e:
-            logger.error(f"Erreur stats PCAP: {e}")
+            logger.error(f"❌ Erreur stats: {e}")
             return {'packets': 0}
-    
+
     def _get_general_info(self, pcap_file):
         """Infos de base du fichier PCAP"""
         try:

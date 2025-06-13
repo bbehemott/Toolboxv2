@@ -230,7 +230,7 @@
                         <strong>📁 Fichier PCAP :</strong><br>
                         <code>${data.pcap_file}</code><br>
                         <button class="btn btn-sm btn-outline-primary mt-2" 
-                                onclick="downloadPcap('${data.pcap_file}')">
+                                onclick="downloadPcap('${data.pcap_file}')"
                             💾 Télécharger PCAP
                         </button>
                     </div>
@@ -262,7 +262,7 @@
             const formData = new FormData();
             formData.append('pcap_file', file);
             
-            fetch('/api/traffic/forensic-analysis', {
+            fetch('/traffic/api/forensic-analysis', {
                 method: 'POST',
                 body: formData
             })
@@ -377,7 +377,7 @@
         function analyzeRecentCapture(pcapFile) {
             document.getElementById('forensic-tab').click();
             
-            fetch('/api/traffic/forensic-analysis', {
+            fetch('/traffic/api/forensic-analysis', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ pcap_file: pcapFile })
