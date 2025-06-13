@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+
+{% block title %}Monitoring - Tâche 39{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1>📊 Monitoring Système</h1>
+            <p class="text-muted">Surveillance en temps réel de votre toolbox de pentest</p>
+        </div>
+    </div>
+
+    <!-- Alertes -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div id="alerts-container" class="d-none">
+                <!-- Les alertes seront ajoutées ici dynamiquement -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Métriques système -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">💻 CPU</h5>
+                    <div class="progress mb-2">
+                        <div id="cpu-progress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <span id="cpu-value" class="badge bg-secondary">--%</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">🧠 Mémoire</h5>
+                    <div class="progress mb-2">
+                        <div id="memory-progress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <span id="memory-value" class="badge bg-secondary">--%</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">💾 Disque</h5>
+                    <div class="progress mb-2">
+                        <div id="disk-progress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <span id="disk-value" class="badge bg-secondary">--%</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">📊 Logs</h5>
+                    <h3 id="logs-count" class="text-primary">--</h3>
+                    <small class="text-muted">Messages totaux</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status des services -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>🔧 Status des Services</h5>
+                    <small class="text-muted">Surveillance des composants critiques</small>
+                </div>
+                <div class="card-body">
+                    <div id="services-loading" class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Chargement...</span>
+                        </div>
+                    </div>
+                    <div id="services-grid" class="row d-none">
+                        <!-- Les services seront ajoutés ici -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Graphiques et tendances -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>📈 Activité Récente</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="activity-chart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>🗂️ Stockage</h5>
+                </div>
+                <div class="card-body">
+                    <div id="storage-info">
+                        <div class="row">
+                            <div class="col-6">
+                                <strong>Elasticsearch:</strong>
+                                <span id="es-storage" class="badge bg-info">-- index</span>
+                            </div>
+                            <div class="col-6">
+                                <strong>Graylog:</strong>
+                                <span id="graylog-storage" class="badge bg-success">-- messages</span>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-6">
+                                <strong>Base de données:</strong>
+                                <span id="db-storage" class="badge bg-warning">-- tables</span>
+                            </div>
+                            <div class="col-6">
+                                <strong>Volumes Docker:</strong>
+                                <span id="docker-storage" class="badge bg-secondary">-- volumes</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions rapides -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>⚡ Actions Rapides</h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <a href="http://localhost:9000" target="_blank" class="btn btn-outline-primary">
+                            📋 Ouvrir Graylog
+                        </a>
+                        <a href="http://localhost:5601" target="_blank" class="btn btn-outline-info">
+                            🔍 Ouvrir Kibana
+                        </a>
+                        <a href="http://localhost:5555" target="_blank" class="btn btn-outline-success">
+                            🌸 Ouvrir Flower
+                        </a>
+                        <a href="{{ url_for('tasks.tasks_dashboard') }}" class="btn btn-outline-warning">
+                            📊 Dashboard Tâches
+                        </a>
+                    </div>
+                    <div class="btn-group ms-3" role="group">
+                        <button class="btn btn-outline-secondary" onclick="refreshDashboard()">
+                            🔄 Actualiser
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="toggleAutoRefresh()">
+                            <span id="auto-refresh-text">⏸️ Arrêter Auto-refresh</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let autoRefreshInterval;
+let autoRefreshEnabled = true;
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Dashboard monitoring chargé');
+    
+    // Charger les données initiales
+    refreshDashboard();
+    
+    // Démarrer l'auto-refresh
+    startAutoRefresh();
+});
+
+function startAutoRefresh() {
+    autoRefreshInterval = setInterval(refreshDashboard, 10000); // 10 secondes
+    console.log('🔄 Auto-refresh démarré (10s)');
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        console.log('⏹️ Auto-refresh arrêté');
+    }
+}
+
+function toggleAutoRefresh() {
+    const button = document.getElementById('auto-refresh-text');
+    
+    if (autoRefreshEnabled) {
+        stopAutoRefresh();
+        button.textContent = '▶️ Reprendre Auto-refresh';
+        autoRefreshEnabled = false;
+    } else {
+        startAutoRefresh();
+        button.textContent = '⏸️ Arrêter Auto-refresh';
+        autoRefreshEnabled = true;
+    }
+}
+
+function refreshDashboard() {
+    console.log('🔄 Actualisation dashboard monitoring...');
+    
+    // Récupérer la santé du système
+    fetch('/monitoring/api/system-health')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateSystemMetrics(data.data.system);
+                updateStorageInfo(data.data.storage);
+                updateLogsStats(data.data.logs);
+                updateAlerts(data.data.alerts);
+            } else {
+                console.error('❌ Erreur récupération santé système:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erreur réseau santé système:', error);
+        });
+    
+    // Récupérer le status des services
+    fetch('/monitoring/api/services-status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateServicesStatus(data.services, data.summary);
+            } else {
+                console.error('❌ Erreur récupération services:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erreur réseau services:', error);
+        });
+}
+
+function updateSystemMetrics(system) {
+    if (system.error) {
+        console.warn('⚠️ Erreur métriques système:', system.error);
+        return;
+    }
+    
+    // CPU
+    const cpuPercent = Math.round(system.cpu_percent);
+    document.getElementById('cpu-progress').style.width = cpuPercent + '%';
+    document.getElementById('cpu-value').textContent = cpuPercent + '%';
+    document.getElementById('cpu-progress').className = `progress-bar ${getCpuClass(cpuPercent)}`;
+    
+    // Mémoire
+    const memoryPercent = Math.round(system.memory.percent);
+    document.getElementById('memory-progress').style.width = memoryPercent + '%';
+    document.getElementById('memory-value').textContent = memoryPercent + '%';
+    document.getElementById('memory-progress').className = `progress-bar ${getMemoryClass(memoryPercent)}`;
+    
+    // Disque
+    const diskPercent = Math.round(system.disk.percent);
+    document.getElementById('disk-progress').style.width = diskPercent + '%';
+    document.getElementById('disk-value').textContent = diskPercent + '%';
+    document.getElementById('disk-progress').className = `progress-bar ${getDiskClass(diskPercent)}`;
+}
+
+function updateServicesStatus(services, summary) {
+    const servicesGrid = document.getElementById('services-grid');
+    const servicesLoading = document.getElementById('services-loading');
+    
+    // Masquer le loading
+    servicesLoading.classList.add('d-none');
+    servicesGrid.classList.remove('d-none');
+    
+    // Vider la grille
+    servicesGrid.innerHTML = '';
+    
+    services.forEach(service => {
+        const serviceCard = document.createElement('div');
+        serviceCard.className = 'col-md-4 col-lg-3 mb-3';
+        
+        const statusClass = service.status === 'healthy' ? 'success' : 
+                           service.status === 'missing' ? 'danger' : 'warning';
+        
+        const statusIcon = service.status === 'healthy' ? '✅' : 
+                          service.status === 'missing' ? '❌' : '⚠️';
+        
+        serviceCard.innerHTML = `
+            <div class="card border-${statusClass}">
+                <div class="card-body text-center">
+                    <h6 class="card-title">${statusIcon} ${service.description}</h6>
+                    <small class="text-muted">${service.name}</small>
+                    <div class="mt-2">
+                        <span class="badge bg-${statusClass}">${service.status}</span>
+                        ${service.port ? `<span class="badge bg-secondary">:${service.port}</span>` : ''}
+                    </div>
+                    ${service.connectivity !== 'n/a' ? `
+                        <div class="mt-1">
+                            <small class="text-muted">Connectivité: ${service.connectivity}</small>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        
+        servicesGrid.appendChild(serviceCard);
+    });
+}
+
+function updateStorageInfo(storage) {
+    if (storage.elasticsearch && storage.elasticsearch.status === 'ok') {
+        document.getElementById('es-storage').textContent = storage.elasticsearch.indices_count + ' index';
+    }
+    
+    if (storage.graylog && storage.graylog.status === 'ok') {
+        document.getElementById('graylog-storage').textContent = storage.graylog.messages_count + ' messages';
+    }
+    
+    if (storage.database && storage.database.status === 'ok') {
+        document.getElementById('db-storage').textContent = storage.database.tables_count + ' tables';
+    }
+    
+    if (storage.docker_volumes && storage.docker_volumes.status === 'ok') {
+        document.getElementById('docker-storage').textContent = storage.docker_volumes.volumes_count + ' volumes';
+    }
+}
+
+function updateLogsStats(logs) {
+    if (logs.status === 'ok') {
+        document.getElementById('logs-count').textContent = logs.total_hits.toLocaleString();
+    }
+}
+
+function updateAlerts(alerts) {
+    const alertsContainer = document.getElementById('alerts-container');
+    
+    if (alerts.length === 0) {
+        alertsContainer.classList.add('d-none');
+        return;
+    }
+    
+    alertsContainer.classList.remove('d-none');
+    alertsContainer.innerHTML = '';
+    
+    alerts.forEach(alert => {
+        const alertClass = alert.type === 'critical' ? 'danger' : 'warning';
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${alertClass} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            <strong>${alert.type === 'critical' ? '🚨' : '⚠️'} ${alert.type.toUpperCase()}:</strong> ${alert.message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        alertsContainer.appendChild(alertDiv);
+    });
+}
+
+function getCpuClass(percent) {
+    if (percent < 50) return 'bg-success';
+    if (percent < 80) return 'bg-warning';
+    return 'bg-danger';
+}
+
+function getMemoryClass(percent) {
+    if (percent < 60) return 'bg-success';
+    if (percent < 85) return 'bg-warning';
+    return 'bg-danger';
+}
+
+function getDiskClass(percent) {
+    if (percent < 70) return 'bg-success';
+    if (percent < 90) return 'bg-warning';
+    return 'bg-danger';
+}
+</script>
+{% endblock %}

@@ -120,6 +120,9 @@ def register_blueprints(app):
     from api.huntkit import huntkit_bp
     app.register_blueprint(huntkit_bp, url_prefix='/huntkit')
 
+    #Blueprint monitoring
+    from api.monitoring import monitoring_bp
+    app.register_blueprint(monitoring_bp, url_prefix='/monitoring')
 
 def log_services_status(app):
     """Affiche le statut des services au démarrage"""

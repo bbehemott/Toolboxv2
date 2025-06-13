@@ -38,7 +38,6 @@ services:
       - .:/app
       - tools_data:/opt
       - wordlists_data:/usr/share/wordlists
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     container_name: toolbox-app-huntkit
 
   # Worker Celery avec accès aux outils HuntKit
@@ -201,57 +200,6 @@ services:
       - "12201:12201/udp" # GELF UDP
     container_name: toolbox-graylog
 
-  # Kibana pour exploration avancée des logs
-  kibana:
-    image: docker.elastic.co/kibana/kibana-oss:7.10.2
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - SERVER_NAME=toolbox-kibana
-      - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=5601
-      - LOGGING_LEVEL=warn
-    ports:
-      - "5601:5601"    # Interface web Kibana
-    volumes:
-      - kibana_data:/usr/share/kibana/data
-    networks:
-      toolbox-network:
-        ipv4_address: 172.20.0.33
-    depends_on:
-      - elasticsearch
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-    container_name: toolbox-kibana
-
-  # Metricbeat pour métriques système
-  metricbeat:
-    image: docker.elastic.co/beats/metricbeat-oss:7.10.2
-    user: root
-    command: metricbeat -e -strict.perms=false
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - KIBANA_HOST=http://kibana:5601
-    volumes:
-      - metricbeat_data:/usr/share/metricbeat/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro
-      - /proc:/hostfs/proc:ro
-      - /:/hostfs:ro
-    networks:
-      toolbox-network:
-        ipv4_address: 172.20.0.34
-    depends_on:
-      - elasticsearch
-      - kibana
-    restart: unless-stopped
-    container_name: toolbox-metricbeat
-
-  # Minio
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
@@ -313,5 +261,3 @@ volumes:
   graylog_journal:
   mongo_data:
   elasticsearch_data:
-  kibana_data:
-  metricbeat_data:
