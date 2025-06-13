@@ -5,6 +5,7 @@ Tâches Celery pour traffic analysis - S'intègre avec votre système existant
 from celery import current_app as celery_app
 from database import DatabaseManager
 from modules.traffic_analysis import TrafficAnalysisModule
+from api.traffic_analysis import TrafficAnalysisModule
 import os
 import logging
 
