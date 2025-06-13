@@ -43,12 +43,22 @@ class TrafficAnalysisModule:
         try:
             # Commande tshark avec gestion d'erreurs
             command = [
-                'timeout', str(duration),
-                'tshark', '-i', 'any', 
-                '-f', f'host {target}',
+                'tshark', '-i', 'any',
+                '-a', f'duration:{duration}',
+                '-f', f'net {target.split(".")[0]}.{target.split(".")[1]}.0.0/16',
                 '-w', temp_pcap
             ]
-            
+            logger.info(f"📦 Commande exacte: {' '.join(command)}")
+            logger.info(f"📁 Fichier temp: {temp_pcap}")
+        try:
+            # ... code ...
+            result = subprocess.run(command, capture_output=True, text=True, timeout=duration+10)
+        
+            # ✅ CES LIGNES DOIVENT ÊTRE INDENTÉES
+            logger.info(f"🔍 Return code: {result.returncode}")
+            logger.info(f"📤 STDOUT: {result.stdout}")
+            logger.info(f"❌ STDERR: {result.stderr}")
+
             logger.info(f"🔍 Début capture {target} pendant {duration}s")
             result = subprocess.run(
                 command, 

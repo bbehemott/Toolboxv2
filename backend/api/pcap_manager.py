@@ -17,7 +17,7 @@ class PcapFileManager:
     
     def __init__(self):
         self.pcap_dir = Path("/app/data/pcap")
-        self.pcap_dir.mkdir(exist_ok=True)
+        self.pcap_dir.mkdir(parents=True, exist_ok=True)
         
         # Utiliser MinIO si disponible (comme dans votre toolbox)
         self.use_minio = False

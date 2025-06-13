@@ -191,7 +191,7 @@
             }, 1000);
             
             // Appel API backend
-            fetch('/api/traffic/pentest-capture', {
+            fetch('/traffic/api/pentest-capture', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ target, duration })

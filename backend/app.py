@@ -8,8 +8,6 @@ from config import config
 from database import DatabaseManager
 from auth import AuthManager
 from security import MinIOClient
-from api.traffic import traffic_bp
-app.register_blueprint(traffic_bp)
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -121,6 +119,9 @@ def register_blueprints(app):
     # ===== NOUVEAU : API HuntKit =====
     from api.huntkit import huntkit_bp
     app.register_blueprint(huntkit_bp, url_prefix='/huntkit')
+
+    from api.traffic import traffic_bp
+    app.register_blueprint(traffic_bp, url_prefix='/traffic')
 
     #Blueprint monitoring
     from api.monitoring import monitoring_bp

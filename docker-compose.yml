@@ -9,6 +9,9 @@ services:
     command: python backend/app.py
     ports:
       - "5000:5000"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
