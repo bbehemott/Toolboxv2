@@ -30,6 +30,7 @@ services:
       - redis
       - postgres
       - graylog
+      - minio
     networks:
       toolbox-network:
         ipv4_address: 172.20.0.2
@@ -130,10 +131,13 @@ services:
   # MongoDB pour Graylog
   mongo:
     image: mongo:5.0
+    volumes:
+      - mongo_data:/data/db
     networks:
       toolbox-network:
         ipv4_address: 172.20.0.30
     container_name: toolbox-mongo
+    restart: unless-stopped
 
   # Elasticsearch pour Graylog
   elasticsearch:
@@ -142,17 +146,30 @@ services:
       - http.host=0.0.0.0
       - transport.host=localhost
       - network.host=0.0.0.0
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"  # ← AUGMENTATION MÉMOIRE
       - discovery.type=single-node
+      - cluster.name=graylog
+      - bootstrap.memory_lock=true
     ulimits:
       memlock:
         soft: -1
         hard: -1
-    mem_limit: 1g
+    mem_limit: 2g  # ← AUGMENTATION LIMITE MÉMOIRE
+    ports:
+      - "9200:9200"  # ← AJOUT DU PORT POUR DIAGNOSTIC
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data  # ← PERSISTANCE
     networks:
       toolbox-network:
         ipv4_address: 172.20.0.31
     container_name: toolbox-elasticsearch
+    restart: unless-stopped  # ← REDÉMARRAGE AUTO
+    healthcheck:  # ← AJOUT HEALTHCHECK
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Graylog pour centralisation des logs
   graylog:
@@ -163,11 +180,15 @@ services:
       - GRAYLOG_HTTP_EXTERNAL_URI=http://127.0.0.1:9000/
       - GRAYLOG_ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - GRAYLOG_MONGODB_URI=mongodb://mongo/graylog
+      - GRAYLOG_SERVER_JAVA_OPTS=-Xms1g -Xmx1g -XX:NewRatio=1 -server -XX:+ResizeTLAB -XX:+UseConcMarkSweepGC -XX:+CMSConcurrentMTEnabled -XX:+CMSClassUnloadingEnabled -XX:+UseParNewGC -XX:-OmitStackTraceInFastThrow
     entrypoint: /usr/bin/tini -- wait-for-it elasticsearch:9200 --  /docker-entrypoint.sh
+    volumes:
+      - graylog_data:/usr/share/graylog/data
+      - graylog_journal:/usr/share/graylog/data/journal
     networks:
       toolbox-network:
         ipv4_address: 172.20.0.32
-    restart: always
+    restart: unless-stopped
     depends_on:
       - mongo
       - elasticsearch
@@ -236,3 +257,7 @@ volumes:
   tools_data:
   wordlists_data:
   minio_data:
+  graylog_data:
+  graylog_journal:
+  mongo_data:
+  elasticsearch_data:
