@@ -1,0 +1,10 @@
+echo "CREATE TABLE IF NOT EXISTS traffic_results (
+    id SERIAL PRIMARY KEY,
+    task_id VARCHAR(255) UNIQUE NOT NULL,
+    user_id INTEGER REFERENCES users(id),
+    task_type VARCHAR(50) NOT NULL,
+    target VARCHAR(255) NOT NULL,
+    result_data JSONB,
+    pcap_file TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);" > migrations/add_traffic_table.sql

@@ -7,6 +7,7 @@ import json
 import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+from api.traffic_analysis import TrafficAnalysisModule
 import re
 import os
 

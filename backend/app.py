@@ -8,6 +8,8 @@ from config import config
 from database import DatabaseManager
 from auth import AuthManager
 from security import MinIOClient
+from api.traffic import traffic_bp
+app.register_blueprint(traffic_bp)
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)

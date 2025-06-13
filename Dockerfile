@@ -88,6 +88,23 @@ RUN curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/conf
     /tmp/msfinstall && \
     rm /tmp/msfinstall
 
+# 7 Wireshark
+RUN apt-get update && apt-get install -y \
+    tshark \
+    wireshark-common \
+    tcpdump \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configurer permissions réseau
+RUN groupadd -r pcap && \
+    usermod -a -G pcap root && \
+    chgrp pcap /usr/bin/dumpcap && \
+    chmod 750 /usr/bin/dumpcap && \
+    setcap cap_net_raw,cap_net_admin=eip /usr/bin/dumpcap
+
+# Répertoire PCAP
+RUN mkdir -p /app/data/pcap && chmod 755 /app/data/pcap
+
 # ===== WORDLISTS ESSENTIELLES =====
 # Télécharger seulement les wordlists nécessaires
 RUN mkdir -p $WORDLISTS/hydra $WORDLISTS/nuclei

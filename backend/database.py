@@ -598,3 +598,58 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"❌ Erreur récupération tâche {task_id}: {e}")
             return None
+
+
+
+    def save_traffic_result(self, task_id, user_id, task_type, target, result_data, pcap_file=None):
+        """Sauver résultat d'analyse traffic en BDD"""
+        
+        query = """
+        INSERT INTO traffic_results (
+            task_id, user_id, task_type, target, result_data, 
+            pcap_file, created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+        """
+        
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query, (
+                        task_id, user_id, task_type, target,
+                        json.dumps(result_data), pcap_file
+                    ))
+                    conn.commit()
+                    logger.info(f"✅ Résultat traffic sauvé: {task_id}")
+        except Exception as e:
+            logger.error(f"❌ Erreur sauvegarde traffic: {e}")
+            raise
+    
+    def get_user_traffic_results(self, user_id, limit=10):
+        """Récupérer résultats traffic d'un utilisateur"""
+        
+        query = """
+        SELECT task_id, task_type, target, result_data, pcap_file, created_at
+        FROM traffic_results 
+        WHERE user_id = %s 
+        ORDER BY created_at DESC 
+        LIMIT %s
+        """
+        
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query, (user_id, limit))
+                    results = cursor.fetchall()
+                    
+                    return [{
+                        'task_id': row[0],
+                        'task_type': row[1], 
+                        'target': row[2],
+                        'result_data': json.loads(row[3]) if row[3] else {},
+                        'pcap_file': row[4],
+                        'created_at': row[5]
+                    } for row in results]
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération results: {e}")
+            return []
