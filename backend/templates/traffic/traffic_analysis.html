@@ -230,7 +230,7 @@
                         <strong>📁 Fichier PCAP :</strong><br>
                         <code>${data.pcap_file}</code><br>
                         <button class="btn btn-sm btn-outline-primary mt-2" 
-                                onclick="downloadPcap('${data.pcap_file}')"
+                                onclick="downloadPcap('${data.pcap_file}')">
                             💾 Télécharger PCAP
                         </button>
                     </div>
@@ -286,39 +286,123 @@
             const resultsDiv = document.getElementById('forensicResults');
             const contentDiv = document.getElementById('forensicResultsContent');
             
+            // Fonction pour expliquer les protocoles
+            function explainProtocol(protocol, frames) {
+                const explanations = {
+                    'tcp': `🌐 **Communication Web/Applications** (${frames} paquets)<br><small class="text-muted">Connexions vers sites web, applications, transferts de fichiers</small>`,
+                    'udp': `🔍 **Requêtes DNS/Streaming** (${frames} paquets)<br><small class="text-muted">Résolution de noms de domaine, streaming vidéo/audio</small>`,
+                    'icmp': `📡 **Tests de Connectivité** (${frames} paquets)<br><small class="text-muted">Ping, diagnostic réseau, vérification d'accessibilité</small>`,
+                    'http': `🌍 **Navigation Web Non Sécurisée** (${frames} paquets)<br><small class="text-muted">Sites web sans chiffrement (attention aux données sensibles)</small>`,
+                    'https': `🔒 **Navigation Web Sécurisée** (${frames} paquets)<br><small class="text-muted">Sites web avec chiffrement SSL/TLS</small>`,
+                    'dns': `📞 **Résolution de Noms** (${frames} paquets)<br><small class="text-muted">Conversion nom de domaine → adresse IP</small>`,
+                    'ssh': `🔐 **Connexion Administrateur** (${frames} paquets)<br><small class="text-muted">Accès sécurisé à distance (terminal)</small>`,
+                    'ftp': `📁 **Transfert de Fichiers** (${frames} paquets)<br><small class="text-muted">Upload/download de documents</small>`,
+                    'smtp': `📧 **Envoi d'Emails** (${frames} paquets)<br><small class="text-muted">Transmission de courrier électronique</small>`,
+                    'pop3': `📬 **Réception d'Emails** (${frames} paquets)<br><small class="text-muted">Téléchargement des emails depuis le serveur</small>`,
+                    'imap': `📮 **Gestion d'Emails** (${frames} paquets)<br><small class="text-muted">Synchronisation boîte mail</small>`,
+                    'arp': `🏠 **Découverte Réseau Local** (${frames} paquets)<br><small class="text-muted">Identification des appareils sur le réseau</small>`,
+                    'dhcp': `🔧 **Configuration Réseau** (${frames} paquets)<br><small class="text-muted">Attribution automatique d'adresses IP</small>`,
+                    'mdns': `🔍 **Découverte Services** (${frames} paquets)<br><small class="text-muted">Détection d'imprimantes, partages réseau</small>`
+                };
+                
+                return explanations[protocol.toLowerCase()] || 
+                       `🔧 **Protocole ${protocol.toUpperCase()}** (${frames} paquets)<br><small class="text-muted">Trafic réseau spécialisé</small>`;
+            }
+            
+            // Fonction pour expliquer les conversations
+            function explainConversation(endpoints, packets, bytes) {
+                const [src, dst] = endpoints.split(' <-> ');
+                
+                // Analyser le type de communication
+                if (dst.includes('8.8.8.8') || dst.includes('8.8.4.4')) {
+                    return `🌐 **Requêtes DNS vers Google** (${packets} échanges)<br><small class="text-muted">Résolution de noms de domaine via serveurs Google DNS</small>`;
+                } else if (dst.includes('1.1.1.1') || dst.includes('1.0.0.1')) {
+                    return `🌐 **Requêtes DNS vers Cloudflare** (${packets} échanges)<br><small class="text-muted">Résolution de noms de domaine via serveurs Cloudflare</small>`;
+                } else if (src.startsWith('172.20') && dst.startsWith('172.20')) {
+                    return `🏠 **Communication Interne** (${packets} échanges)<br><small class="text-muted">Trafic entre conteneurs Docker de la toolbox</small>`;
+                } else if (src.startsWith('192.168') && dst.startsWith('192.168')) {
+                    return `🏠 **Réseau Local** (${packets} échanges)<br><small class="text-muted">Communication entre appareils du réseau domestique/entreprise</small>`;
+                } else if (dst.includes(':443') || src.includes(':443')) {
+                    return `🔒 **Connexion HTTPS** (${packets} échanges)<br><small class="text-muted">Navigation sécurisée ou API chiffrée</small>`;
+                } else if (dst.includes(':80') || src.includes(':80')) {
+                    return `🌍 **Connexion HTTP** (${packets} échanges)<br><small class="text-muted">Navigation web non chiffrée</small>`;
+                } else if (dst.includes(':22') || src.includes(':22')) {
+                    return `🔐 **Connexion SSH** (${packets} échanges)<br><small class="text-muted">Administration à distance sécurisée</small>`;
+                } else if (dst.includes(':53') || src.includes(':53')) {
+                    return `📞 **Requête DNS** (${packets} échanges)<br><small class="text-muted">Résolution de nom de domaine</small>`;
+                } else {
+                    return `🔗 **Communication Réseau** (${packets} échanges)<br><small class="text-muted">Entre ${src} et ${dst}</small>`;
+                }
+            }
+            
+            // Générer le HTML des protocoles avec explications
             let protocolsHtml = '';
             if (data.protocols && data.protocols.length > 0) {
-                protocolsHtml = data.protocols.map(p => 
-                    `<span class="badge bg-secondary me-1">${p.protocol} (${p.frames})</span>`
-                ).join('');
+                protocolsHtml = data.protocols.map(p => `
+                    <div class="alert alert-light border-start border-primary border-3 py-2 mb-2">
+                        ${explainProtocol(p.protocol, p.frames)}
+                    </div>
+                `).join('');
             }
             
+            // Générer le HTML des conversations avec explications
             let conversationsHtml = '';
             if (data.conversations && data.conversations.length > 0) {
-                conversationsHtml = data.conversations.map(c => 
-                    `<li><code>${c.endpoints}</code> - ${c.packets} paquets, ${c.bytes} bytes</li>`
-                ).join('');
+                conversationsHtml = data.conversations.map(c => `
+                    <div class="card mb-2">
+                        <div class="card-body py-2">
+                            ${explainConversation(c.endpoints, c.packets, c.bytes)}
+                            <div class="mt-1">
+                                <span class="badge bg-secondary">${c.bytes} bytes</span>
+                                <span class="badge bg-info">${c.packets} paquets</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
             }
             
+            // Générer le rapport complet
             contentDiv.innerHTML = `
-                <div class="row">
-                    <div class="col-12">
-                        <h6>📊 Informations générales :</h6>
-                        <ul>
-                            <li><strong>Paquets totaux :</strong> ${data.general_info.total_packets || 'N/A'}</li>
-                            <li><strong>Taille fichier :</strong> ${data.general_info.file_size || 'N/A'}</li>
-                            <li><strong>Taille données :</strong> ${data.general_info.data_size || 'N/A'}</li>
-                        </ul>
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">📊 Rapport d'Analyse Forensique - Compréhensible</h5>
                     </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>🔌 Protocoles détectés :</h6>
-                        ${protocolsHtml || '<em class="text-muted">Aucun protocole détecté</em>'}
-                    </div>
-                    <div class="col-md-6">
-                        <h6>💬 Conversations principales :</h6>
-                        ${conversationsHtml ? `<ul>${conversationsHtml}</ul>` : '<em class="text-muted">Aucune conversation détectée</em>'}
+                    <div class="card-body">
+                        <!-- Résumé exécutif -->
+                        <div class="alert alert-info mb-4">
+                            <h6 class="alert-heading">📋 Résumé de l'Analyse</h6>
+                            <p class="mb-1">
+                                <strong>Total paquets :</strong> ${data.general_info?.total_packets || 'N/A'} |
+                                <strong>Durée :</strong> ${data.general_info?.duration || 'N/A'} |
+                                <strong>Taille :</strong> ${data.general_info?.file_size || 'N/A'}
+                            </p>
+                            <p class="mb-0">
+                                <strong>Types d'activité détectés :</strong> ${data.protocols?.length || 0} protocoles différents, 
+                                ${data.conversations?.length || 0} conversations réseau principales
+                            </p>
+                        </div>
+                        
+                        <!-- Activités détectées -->
+                        <div class="mb-4">
+                            <h6 class="text-primary mb-3">🔍 Activités Réseau Détectées</h6>
+                            ${protocolsHtml || '<div class="alert alert-warning">Aucune activité réseau détectée</div>'}
+                        </div>
+                        
+                        <!-- Communications principales -->
+                        <div class="mb-4">
+                            <h6 class="text-success mb-3">💬 Communications Principales</h6>
+                            ${conversationsHtml || '<div class="alert alert-warning">Aucune communication détectée</div>'}
+                        </div>
+                        
+                        <!-- Actions -->
+                        <div class="d-flex gap-2 mt-4">
+                            <button class="btn btn-primary btn-sm" onclick="downloadPcap('${data.pcap_file}')">
+                                💾 Télécharger PCAP Original
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="exportForensicReport()">
+                                📄 Exporter ce Rapport
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -337,6 +421,36 @@
                 </div>
             `;
             container.style.display = 'block';
+        }
+
+
+        function exportForensicReport() {
+            // Récupérer le contenu du rapport
+            const reportContent = document.getElementById('forensicResultsContent').innerText;
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            
+            // Créer le contenu du rapport
+            const reportText = `
+        RAPPORT D'ANALYSE FORENSIQUE - ${new Date().toLocaleString()}
+        ================================================================
+        
+        ${reportContent}
+        
+        --- Informations techniques ---
+        Généré par : Toolbox Cybersécurité - Module Wireshark
+        Date : ${new Date().toLocaleString()}
+            `.trim();
+            
+            // Télécharger comme fichier texte
+            const blob = new Blob([reportText], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rapport-forensique-${timestamp}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
         }
 
         function addRecentCapture(captureData) {
@@ -393,7 +507,8 @@
         }
 
         function downloadPcap(pcapFile) {
-            window.open(`/api/traffic/download/${encodeURIComponent(pcapFile)}`);
+            const filename = pcapFile.includes('/') ? pcapFile.split('/').pop() : pcapFile;
+            window.open(`/traffic/api/download/${encodeURIComponent(filename)}`);
         }
     </script>
 </body>
