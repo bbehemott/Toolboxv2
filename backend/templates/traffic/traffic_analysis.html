@@ -1,34 +1,28 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analyse de Trafic Réseau - Tâches 20 & 45</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .task-card {
-            border-left: 4px solid #007bff;
-            margin-bottom: 20px;
-        }
-        .task-20 { border-left-color: #28a745; }
-        .task-45 { border-left-color: #dc3545; }
-        .result-box {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 15px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        .status-running { color: #007bff; }
-        .status-success { color: #28a745; }
-        .status-error { color: #dc3545; }
-    </style>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Analyse de Trafic Réseau - Wireshark{% endblock %}
+{% block content %}
+
+<style>
+    .task-card {
+        border-left: 4px solid #007bff;
+        margin-bottom: 20px;
+    }
+    .task-20 { border-left-color: #28a745; }
+    .task-45 { border-left-color: #dc3545; }
+    .result-box {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 15px;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .status-running { color: #007bff; }
+    .status-success { color: #28a745; }
+    .status-error { color: #dc3545; }
+</style>
     <div class="container mt-4">
         <h1 class="text-center mb-4">🌐 Analyse de Trafic Réseau</h1>
-        <p class="text-center text-muted mb-5">Tâches 20 (Tests d'intrusion) & 45 (Analyse forensique)</p>
 
         <!-- Navigation par onglets -->
         <ul class="nav nav-tabs" id="trafficTabs" role="tablist">
@@ -106,7 +100,7 @@
             <div class="tab-pane fade" id="forensic" role="tabpanel">
                 <div class="card task-card task-45 mt-3">
                     <div class="card-header">
-                        <h5>🕵️ Tâche 45 - Analyse Forensique</h5>
+                        <h5>Analyse Forensique</h5>
                         <small class="text-muted">Analysez des fichiers PCAP existants</small>
                     </div>
                     <div class="card-body">
@@ -128,7 +122,7 @@
 
                         <!-- Liste des captures récentes (Tâche 20) -->
                         <div class="mt-4">
-                            <h6>📁 Captures récentes (depuis Tâche 20)</h6>
+                            <h6>📁 Captures récentes</h6>
                             <div id="recentCaptures" class="list-group">
                                 <div class="list-group-item text-muted text-center">
                                     Aucune capture récente
@@ -253,11 +247,33 @@
         });
 
         function startForensicAnalysis(file) {
-            const statusDiv = document.getElementById('forensicStatus');
+            const statusDiv = document.getElementById('forensicProgress');
             const resultsDiv = document.getElementById('forensicResults');
             
             statusDiv.style.display = 'block';
             resultsDiv.style.display = 'none';
+            
+            // Simuler progression
+            let progress = 0;
+            const progressBar = document.getElementById('forensicProgressBar');
+            const progressText = document.getElementById('forensicProgressText');
+            
+            const interval = setInterval(() => {
+                progress += 10;
+                progressBar.style.width = progress + '%';
+                
+                if (progress < 50) {
+                    progressText.textContent = 'Lecture du fichier PCAP...';
+                } else if (progress < 80) {
+                    progressText.textContent = 'Analyse des protocoles...';
+                } else {
+                    progressText.textContent = 'Génération du rapport...';
+                }
+                
+                if (progress >= 100) {
+                    clearInterval(interval);
+                }
+            }, 200);
             
             const formData = new FormData();
             formData.append('pcap_file', file);
@@ -268,6 +284,7 @@
             })
             .then(response => response.json())
             .then(data => {
+                clearInterval(interval);
                 statusDiv.style.display = 'none';
                 
                 if (data.success) {
@@ -277,6 +294,7 @@
                 }
             })
             .catch(error => {
+                clearInterval(interval);
                 statusDiv.style.display = 'none';
                 showError('forensicResults', 'Erreur analyse: ' + error.message);
             });
