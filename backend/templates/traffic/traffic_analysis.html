@@ -1,14 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Analyse de Trafic Réseau - Wireshark{% endblock %}
+{% block title %}Analyse de Trafic Réseau - Toolbox{% endblock %}
 {% block content %}
 
 <style>
     .task-card {
         border-left: 4px solid #007bff;
         margin-bottom: 20px;
+        transition: transform 0.2s ease;
+    }
+    .task-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
     .task-20 { border-left-color: #28a745; }
     .task-45 { border-left-color: #dc3545; }
+    
     .result-box {
         background: #f8f9fa;
         border-radius: 8px;
@@ -16,518 +22,750 @@
         margin-top: 15px;
         max-height: 400px;
         overflow-y: auto;
+        border: 1px solid #dee2e6;
     }
+    
     .status-running { color: #007bff; }
     .status-success { color: #28a745; }
     .status-error { color: #dc3545; }
 </style>
-    <div class="container mt-4">
-        <h1 class="text-center mb-4">🌐 Analyse de Trafic Réseau</h1>
 
-        <!-- Navigation par onglets -->
-        <ul class="nav nav-tabs" id="trafficTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="pentest-tab" data-bs-toggle="tab" data-bs-target="#pentest" 
-                        type="button" role="tab">
-                    🔍 Tâche 20 - Capture Pentest
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="forensic-tab" data-bs-toggle="tab" data-bs-target="#forensic" 
-                        type="button" role="tab">
-                    🕵️ Tâche 45 - Analyse Forensique
-                </button>
-            </li>
-        </ul>
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2>🌐 Analyse de Trafic Réseau</h2>
+    </div>
+</div>
 
-        <div class="tab-content" id="trafficTabContent">
-            
-            <!-- TÂCHE 20 - CAPTURE PENTEST -->
-            <div class="tab-pane fade show active" id="pentest" role="tabpanel">
-                <div class="card task-card task-20 mt-3">
-                    <div class="card-header">
-                        <h5>🔍 Tâche 20 - Intégration Wireshark (Tests d'intrusion)</h5>
-                        <small class="text-muted">Capture le trafic réseau pendant vos scans</small>
-                    </div>
-                    <div class="card-body">
-                        <form id="pentestForm">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <label class="form-label">Cible à analyser</label>
-                                    <input type="text" class="form-control" id="pentestTarget" 
-                                           placeholder="192.168.1.1 ou example.com" required>
-                                    <div class="form-text">IP ou nom de domaine à surveiller</div>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">Durée (secondes)</label>
-                                    <select class="form-control" id="pentestDuration">
-                                        <option value="30">30 secondes</option>
-                                        <option value="60" selected>1 minute</option>
-                                        <option value="120">2 minutes</option>
-                                        <option value="300">5 minutes</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-3 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-success w-100">
-                                        🚀 Lancer la capture
-                                    </button>
-                                </div>
-                            </div>
-                        </form>
+<!-- Navigation par onglets -->
+<ul class="nav nav-tabs mb-4" id="trafficTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="pentest-tab" data-bs-toggle="tab" data-bs-target="#pentest" 
+                type="button" role="tab">
+            Capture Réseau
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="forensic-tab" data-bs-toggle="tab" data-bs-target="#forensic" 
+                type="button" role="tab">
+            Analyse Forensique
+        </button>
+    </li>
+</ul>
 
-                        <div id="pentestStatus" class="mt-3" style="display: none;">
-                            <div class="alert alert-info">
-                                <div class="d-flex align-items-center">
-                                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                                    <span id="pentestStatusText">Capture en cours...</span>
-                                </div>
-                                <div class="progress mt-2">
-                                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                                         id="pentestProgress" style="width: 0%"></div>
-                                </div>
-                            </div>
+<div class="tab-content" id="trafficTabContent">
+    
+    <!-- TÂCHE 20 - CAPTURE PENTEST -->
+    <div class="tab-pane fade show active" id="pentest" role="tabpanel">
+        <div class="card task-card task-20">
+            <div class="card-header">
+                <h5 class="mb-1">Capture Réseau</h5>
+                <small class="text-muted">Capture le trafic réseau pendant vos scans de pénétration</small>
+            </div>
+            <div class="card-body">
+                <form id="pentestForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="target" class="form-label">🎯 Cible à analyser</label>
+                            <input type="text" class="form-control" id="target" 
+                                   placeholder="192.168.1.100 ou example.com" required>
+                            <div class="form-text">Adresse IP ou nom de domaine de la cible</div>
                         </div>
-
-                        <div id="pentestResults" class="result-box" style="display: none;">
-                            <h6>📊 Résultats de la capture :</h6>
-                            <div id="pentestResultsContent"></div>
+                        <div class="col-md-4">
+                            <label for="duration" class="form-label">⏱️ Durée de capture</label>
+                            <select class="form-select" id="duration">
+                                <option value="30">30 secondes</option>
+                                <option value="60" selected>1 minute</option>
+                                <option value="120">2 minutes</option>
+                                <option value="300">5 minutes</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100">
+                                ▶️ Capturer
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                
+                <!-- Barre de progression pour la capture -->
+                <div id="captureProgress" class="d-none mt-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold status-running">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            Capture en cours...
+                        </span>
+                        <span id="captureTimer" class="badge bg-primary">0s</span>
+                    </div>
+                    <div class="progress">
+                        <div id="captureProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                    <small class="text-muted mt-1 d-block">Capture du trafic réseau en temps réel...</small>
+                </div>
+                
+                <!-- Status capture (ancien) -->
+                <div id="pentestStatus" style="display: none;" class="mt-3">
+                    <div class="alert alert-info">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            <span class="status-running">Capture en cours...</span>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- TÂCHE 45 - ANALYSE FORENSIQUE -->
-            <div class="tab-pane fade" id="forensic" role="tabpanel">
-                <div class="card task-card task-45 mt-3">
-                    <div class="card-header">
-                        <h5>Analyse Forensique</h5>
-                        <small class="text-muted">Analysez des fichiers PCAP existants</small>
+                
+                <!-- Résultats de capture -->
+                <div id="pentestResults" style="display: none;" class="mt-3">
+                    <div class="result-box">
+                        <div id="pentestResultsContent"></div>
                     </div>
-                    <div class="card-body">
-                        <form id="forensicForm">
-                            <div class="row">
-                                <div class="col-md-8">
-                                    <label class="form-label">Fichier PCAP à analyser</label>
-                                    <input type="file" class="form-control" id="forensicFile" 
-                                           accept=".pcap,.pcapng" required>
-                                    <div class="form-text">Uploadez un fichier .pcap ou .pcapng</div>
-                                </div>
-                                <div class="col-md-4 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-danger w-100">
-                                        🔍 Analyser le fichier
-                                    </button>
-                                </div>
-                            </div>
-                        </form>
-
-                        <!-- Liste des captures récentes (Tâche 20) -->
-                        <div class="mt-4">
-                            <h6>📁 Captures récentes</h6>
-                            <div id="recentCaptures" class="list-group">
-                                <div class="list-group-item text-muted text-center">
-                                    Aucune capture récente
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="forensicStatus" class="mt-3" style="display: none;">
-                            <div class="alert alert-warning">
-                                <div class="d-flex align-items-center">
-                                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                                    <span>Analyse forensique en cours...</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="forensicResults" class="result-box" style="display: none;">
-                            <h6>📋 Rapport d'analyse forensique :</h6>
-                            <div id="forensicResultsContent"></div>
-                        </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Captures récentes -->
+        <div class="card task-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">📂 Captures récentes</h6>
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearAllCaptures()" 
+                        title="Vider la liste" style="display: none;" id="clearCapturesBtn">
+                    🗑️ Vider
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="recentCaptures">
+                    <div class="text-muted text-center py-3">
+                        Aucune capture récente
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Variables globales
-        let recentCaptures = [];
-
-        // =====================================
-        // TÂCHE 20 - CAPTURE PENTEST
-        // =====================================
-        document.getElementById('pentestForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const target = document.getElementById('pentestTarget').value;
-            const duration = parseInt(document.getElementById('pentestDuration').value);
-            
-            startPentestCapture(target, duration);
-        });
-
-        function startPentestCapture(target, duration) {
-            const statusDiv = document.getElementById('pentestStatus');
-            const resultsDiv = document.getElementById('pentestResults');
-            const statusText = document.getElementById('pentestStatusText');
-            const progressBar = document.getElementById('pentestProgress');
-            
-            // Afficher status
-            statusDiv.style.display = 'block';
-            resultsDiv.style.display = 'none';
-            statusText.textContent = `Capture du trafic vers ${target} pendant ${duration}s...`;
-            
-            // Animation progress bar
-            let progress = 0;
-            const interval = setInterval(() => {
-                progress += (100 / duration);
-                progressBar.style.width = Math.min(progress, 100) + '%';
-            }, 1000);
-            
-            // Appel API backend
-            fetch('/traffic/api/pentest-capture', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ target, duration })
-            })
-            .then(response => response.json())
-            .then(data => {
-                clearInterval(interval);
-                statusDiv.style.display = 'none';
-                
-                if (data.success) {
-                    showPentestResults(data);
-                    addRecentCapture(data);
-                } else {
-                    showError('pentestResults', data.error);
-                }
-            })
-            .catch(error => {
-                clearInterval(interval);
-                statusDiv.style.display = 'none';
-                showError('pentestResults', 'Erreur réseau: ' + error.message);
-            });
-        }
-
-        function showPentestResults(data) {
-            const resultsDiv = document.getElementById('pentestResults');
-            const contentDiv = document.getElementById('pentestResultsContent');
-            
-            contentDiv.innerHTML = `
-                <div class="row">
-                    <div class="col-md-6">
-                        <strong>🎯 Cible :</strong> ${data.target}<br>
-                        <strong>⏱️ Durée :</strong> ${data.duration}s<br>
-                        <strong>📦 Paquets capturés :</strong> ${data.packets_captured}
+    
+    <!-- TÂCHE 45 - ANALYSE FORENSIQUE -->
+    <div class="tab-pane fade" id="forensic" role="tabpanel">
+        <div class="card task-card task-45">
+            <div class="card-header">
+                <h5 class="mb-1">Analyse Forensique</h5>
+                <small class="text-muted">Analyse approfondie des fichiers PCAP pour investigation</small>
+            </div>
+            <div class="card-body">
+                <form id="forensicForm">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <label for="forensicFile" class="form-label">📁 Fichier PCAP à analyser</label>
+                            <input type="file" class="form-control" id="forensicFile" 
+                                   accept=".pcap,.pcapng,.cap" required>
+                            <div class="form-text">Formats supportés: .pcap, .pcapng, .cap</div>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-danger w-100">
+                                🔬 Analyser
+                            </button>
+                        </div>
                     </div>
-                    <div class="col-md-6">
-                        <strong>📁 Fichier PCAP :</strong><br>
-                        <code>${data.pcap_file}</code><br>
-                        <button class="btn btn-sm btn-outline-primary mt-2" 
-                                onclick="downloadPcap('${data.pcap_file}')">
+                </form>
+                
+                <!-- Barre de progression pour l'analyse -->
+                <div id="analysisProgress" class="d-none mt-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold status-running">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            Analyse forensique en cours...
+                        </span>
+                        <span id="analysisStep" class="badge bg-danger">Initialisation</span>
+                    </div>
+                    <div class="progress">
+                        <div id="analysisProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-danger" 
+                             role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                    <div class="mt-2">
+                        <small id="analysisDetails" class="text-muted">
+                            Préparation de l'analyse...
+                        </small>
+                    </div>
+                </div>
+                
+                <!-- Status analyse (ancien) -->
+                <div id="forensicStatus" style="display: none;" class="mt-3">
+                    <div class="alert alert-info">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            <span class="status-running">Analyse forensique en cours...</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Résultats d'analyse -->
+                <div id="forensicResults" style="display: none;" class="mt-3">
+                    <div id="forensicResultsContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Variables globales
+let recentCaptures = [];
+
+// Charger les captures depuis localStorage au démarrage
+document.addEventListener('DOMContentLoaded', function() {
+    loadRecentCaptures();
+    updateRecentCapturesList();
+});
+
+// Fonctions de persistance
+function saveRecentCaptures() {
+    try {
+        localStorage.setItem('toolbox_recent_captures', JSON.stringify(recentCaptures));
+    } catch (e) {
+        console.warn('Impossible de sauvegarder les captures récentes:', e);
+    }
+}
+
+function loadRecentCaptures() {
+    try {
+        const saved = localStorage.getItem('toolbox_recent_captures');
+        if (saved) {
+            recentCaptures = JSON.parse(saved);
+            // Garder max 5 captures et nettoyer les anciennes (plus de 7 jours)
+            const weekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+            recentCaptures = recentCaptures
+                .filter(capture => new Date(capture.timestamp).getTime() > weekAgo)
+                .slice(0, 5);
+        }
+    } catch (e) {
+        console.warn('Impossible de charger les captures récentes:', e);
+        recentCaptures = [];
+    }
+}
+
+// =====================================
+// TÂCHE 20 - CAPTURE PENTEST  
+// =====================================
+document.getElementById('pentestForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const target = document.getElementById('target').value.trim();
+    const duration = document.getElementById('duration').value;
+    
+    if (target) {
+        startPentestCapture(target, duration);
+    }
+});
+
+function startPentestCapture(target, duration) {
+    const progressDiv = document.getElementById('captureProgress');
+    const statusDiv = document.getElementById('pentestStatus');
+    const resultsDiv = document.getElementById('pentestResults');
+    
+    // Afficher la nouvelle barre de progression
+    progressDiv.classList.remove('d-none');
+    statusDiv.style.display = 'none';
+    resultsDiv.style.display = 'none';
+    
+    // Démarrer l'animation de la barre
+    startCaptureProgressBar(duration);
+    
+    // Simuler un délai pour l'exemple (tu peux l'enlever)
+    let interval = setInterval(() => {
+        clearInterval(interval);
+        
+        fetch('/traffic/api/pentest-capture', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target, duration })
+        })
+        .then(response => response.json())
+        .then(data => {
+            progressDiv.classList.add('d-none');
+            
+            if (data.success) {
+                showPentestResults(data);
+                addRecentCapture(data);
+            } else {
+                showError('pentestResults', data.error);
+            }
+        })
+        .catch(error => {
+            clearInterval(interval);
+            progressDiv.classList.add('d-none');
+            showError('pentestResults', 'Erreur réseau: ' + error.message);
+        });
+    }, duration * 1000); // Attendre la durée de capture
+}
+
+function startCaptureProgressBar(duration) {
+    const progressBar = document.getElementById('captureProgressBar');
+    const timerSpan = document.getElementById('captureTimer');
+    
+    let elapsed = 0;
+    
+    const interval = setInterval(() => {
+        elapsed++;
+        const progress = (elapsed / duration) * 100;
+        
+        progressBar.style.width = progress + '%';
+        progressBar.textContent = Math.round(progress) + '%';
+        timerSpan.textContent = elapsed + 's';
+        
+        if (elapsed >= duration) {
+            clearInterval(interval);
+        }
+    }, 1000);
+}
+
+function showPentestResults(data) {
+    const resultsDiv = document.getElementById('pentestResults');
+    const contentDiv = document.getElementById('pentestResultsContent');
+    
+    contentDiv.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <strong>🎯 Cible :</strong> ${data.target}<br>
+                <strong>⏱️ Durée :</strong> ${data.duration}s<br>
+                <strong>📦 Paquets capturés :</strong> ${data.packets_captured}
+            </div>
+            <div class="col-md-6">
+                <strong>📁 Fichier PCAP :</strong><br>
+                <code>${data.pcap_file}</code><br>
+                <button class="btn btn-sm btn-outline-primary mt-2" 
+                        onclick="downloadPcap('${data.pcap_file}')">
+                    💾 Télécharger PCAP
+                </button>
+                <button class="btn btn-sm btn-outline-success mt-2 ms-2" 
+                        onclick="analyzeCapture('${data.pcap_file}')">
+                    🔬 Analyser ce fichier
+                </button>
+            </div>
+        </div>
+    `;
+    
+    resultsDiv.style.display = 'block';
+}
+
+// =====================================
+// TÂCHE 45 - ANALYSE FORENSIQUE  
+// =====================================
+document.getElementById('forensicForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('forensicFile');
+    
+    if (fileInput.files.length > 0) {
+        startForensicAnalysis(fileInput.files[0]);
+    }
+});
+
+function startForensicAnalysis(file) {
+    const progressDiv = document.getElementById('analysisProgress');
+    const statusDiv = document.getElementById('forensicStatus');
+    const resultsDiv = document.getElementById('forensicResults');
+    
+    // Afficher la nouvelle barre de progression
+    progressDiv.classList.remove('d-none');
+    statusDiv.style.display = 'none';
+    resultsDiv.style.display = 'none';
+    
+    // Démarrer l'animation de la barre d'analyse
+    startAnalysisProgressBar();
+    
+    const formData = new FormData();
+    formData.append('pcap_file', file);
+    
+    fetch('/traffic/api/forensic-analysis', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        progressDiv.classList.add('d-none');
+        
+        if (data.success) {
+            showForensicResults(data);
+        } else {
+            showError('forensicResults', data.error);
+        }
+    })
+    .catch(error => {
+        progressDiv.classList.add('d-none');
+        showError('forensicResults', 'Erreur analyse: ' + error.message);
+    });
+}
+
+function startAnalysisProgressBar() {
+    const progressBar = document.getElementById('analysisProgressBar');
+    const stepSpan = document.getElementById('analysisStep');
+    const detailsSpan = document.getElementById('analysisDetails');
+    
+    const steps = [
+        { progress: 15, step: 'Lecture fichier', details: 'Chargement du fichier PCAP en mémoire...' },
+        { progress: 30, step: 'Validation', details: 'Vérification de l\'intégrité et du format...' },
+        { progress: 45, step: 'Extraction protocoles', details: 'Analyse des protocoles réseau détectés...' },
+        { progress: 60, step: 'Analyse conversations', details: 'Détection des flux de communication...' },
+        { progress: 75, step: 'Détection anomalies', details: 'Recherche d\'activités suspectes...' },
+        { progress: 90, step: 'Génération rapport', details: 'Compilation des résultats d\'analyse...' },
+        { progress: 100, step: 'Terminé', details: 'Analyse forensique complète !' }
+    ];
+    
+    let currentStep = 0;
+    
+    const interval = setInterval(() => {
+        if (currentStep < steps.length) {
+            const step = steps[currentStep];
+            
+            progressBar.style.width = step.progress + '%';
+            progressBar.textContent = step.progress + '%';
+            stepSpan.textContent = step.step;
+            detailsSpan.textContent = step.details;
+            
+            currentStep++;
+            
+            if (currentStep >= steps.length) {
+                clearInterval(interval);
+            }
+        }
+    }, 800);
+}
+
+function showForensicResults(data) {
+    const resultsDiv = document.getElementById('forensicResults');
+    const forensicResultsContent = document.getElementById('forensicResultsContent');
+    
+    // Vérifier que l'élément existe
+    if (!forensicResultsContent) {
+        console.error('Élément forensicResultsContent non trouvé');
+        return;
+    }
+    
+    // Fonction pour expliquer les protocoles
+    function explainProtocol(protocol, frames) {
+        const explanations = {
+            'tcp': `🌐 **Communication Web/Applications** (${frames} paquets)<br><small class="text-muted">Connexions vers sites web, applications, transferts de fichiers</small>`,
+            'udp': `🔍 **Requêtes DNS/Streaming** (${frames} paquets)<br><small class="text-muted">Résolution de noms de domaine, streaming vidéo/audio</small>`,
+            'icmp': `📡 **Tests de Connectivité** (${frames} paquets)<br><small class="text-muted">Ping, diagnostic réseau, vérification d'accessibilité</small>`,
+            'http': `🌍 **Navigation Web Non Sécurisée** (${frames} paquets)<br><small class="text-muted">Sites web sans chiffrement (attention aux données sensibles)</small>`,
+            'https': `🔒 **Navigation Web Sécurisée** (${frames} paquets)<br><small class="text-muted">Sites web avec chiffrement SSL/TLS</small>`,
+            'dns': `📞 **Résolution de Noms** (${frames} paquets)<br><small class="text-muted">Conversion nom de domaine → adresse IP</small>`,
+            'ssh': `🔐 **Connexion Administrateur** (${frames} paquets)<br><small class="text-muted">Accès sécurisé à distance (terminal)</small>`,
+            'ftp': `📁 **Transfert de Fichiers** (${frames} paquets)<br><small class="text-muted">Upload/download de documents</small>`,
+            'smtp': `📧 **Envoi d'Emails** (${frames} paquets)<br><small class="text-muted">Transmission de courrier électronique</small>`,
+            'pop3': `📬 **Réception d'Emails** (${frames} paquets)<br><small class="text-muted">Téléchargement des emails depuis le serveur</small>`,
+            'imap': `📮 **Gestion d'Emails** (${frames} paquets)<br><small class="text-muted">Synchronisation boîte mail</small>`,
+            'arp': `🏠 **Découverte Réseau Local** (${frames} paquets)<br><small class="text-muted">Identification des appareils sur le réseau local</small>`
+        };
+        return explanations[protocol.toLowerCase()] || `🔗 **${protocol.toUpperCase()}** (${frames} paquets)`;
+    }
+    
+    // Fonction pour expliquer les conversations
+    function explainConversation(endpoints, packets, bytes) {
+        // Vérifier si endpoints contient bien le séparateur
+        if (!endpoints || !endpoints.includes(' ↔ ')) {
+            return `🔗 **Communication Réseau** (${packets} échanges)<br><small class="text-muted">Endpoints: ${endpoints || 'N/A'}</small>`;
+        }
+        
+        const [src, dst] = endpoints.split(' ↔ ');
+        
+        // Vérifier que src et dst existent
+        if (!src || !dst) {
+            return `🔗 **Communication Réseau** (${packets} échanges)<br><small class="text-muted">Endpoints: ${endpoints}</small>`;
+        }
+        
+        if (dst.includes(':53') || src.includes(':53')) {
+            return `📞 **Requête DNS** (${packets} échanges)<br><small class="text-muted">Résolution de nom de domaine</small>`;
+        } else {
+            return `🔗 **Communication Réseau** (${packets} échanges)<br><small class="text-muted">Entre ${src} et ${dst}</small>`;
+        }
+    }
+    
+    // Générer le HTML des protocoles avec explications
+    let protocolsHtml = '';
+    if (data.protocols && data.protocols.length > 0) {
+        protocolsHtml = data.protocols.map(p => `
+            <div class="col-md-6 mb-3">
+                <div class="alert alert-light border-start border-primary border-3 py-3">
+                    ${explainProtocol(p.protocol, p.frames)}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    // Générer le HTML des conversations avec explications
+    let conversationsHtml = '';
+    if (data.conversations && data.conversations.length > 0) {
+        conversationsHtml = data.conversations.map(c => `
+            <div class="col-md-6 mb-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        ${explainConversation(c.endpoints, c.packets, c.bytes)}
+                        <div class="mt-2">
+                            <span class="badge bg-secondary me-1">${c.bytes} bytes</span>
+                            <span class="badge bg-info">${c.packets} paquets</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    // Générer le rapport complet sur toute la page
+    forensicResultsContent.innerHTML = `
+        <div class="card shadow-lg">
+            <div class="card-header bg-primary text-white py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">📊 Rapport d'Analyse Forensique Complète</h4>
+                    <div>
+                        <button class="btn btn-light btn-sm me-2" onclick="downloadPcap('${data.pcap_file || ''}')">
                             💾 Télécharger PCAP
+                        </button>
+                        <button class="btn btn-outline-light btn-sm" onclick="exportForensicReport()">
+                            📄 Exporter Rapport
                         </button>
                     </div>
                 </div>
-            `;
-            
-            resultsDiv.style.display = 'block';
-        }
-
-        // =====================================
-        // TÂCHE 45 - ANALYSE FORENSIQUE  
-        // =====================================
-        document.getElementById('forensicForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const fileInput = document.getElementById('forensicFile');
-            
-            if (fileInput.files.length > 0) {
-                startForensicAnalysis(fileInput.files[0]);
-            }
-        });
-
-        function startForensicAnalysis(file) {
-            const statusDiv = document.getElementById('forensicProgress');
-            const resultsDiv = document.getElementById('forensicResults');
-            
-            statusDiv.style.display = 'block';
-            resultsDiv.style.display = 'none';
-            
-            // Simuler progression
-            let progress = 0;
-            const progressBar = document.getElementById('forensicProgressBar');
-            const progressText = document.getElementById('forensicProgressText');
-            
-            const interval = setInterval(() => {
-                progress += 10;
-                progressBar.style.width = progress + '%';
-                
-                if (progress < 50) {
-                    progressText.textContent = 'Lecture du fichier PCAP...';
-                } else if (progress < 80) {
-                    progressText.textContent = 'Analyse des protocoles...';
-                } else {
-                    progressText.textContent = 'Génération du rapport...';
-                }
-                
-                if (progress >= 100) {
-                    clearInterval(interval);
-                }
-            }, 200);
-            
-            const formData = new FormData();
-            formData.append('pcap_file', file);
-            
-            fetch('/traffic/api/forensic-analysis', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                clearInterval(interval);
-                statusDiv.style.display = 'none';
-                
-                if (data.success) {
-                    showForensicResults(data);
-                } else {
-                    showError('forensicResults', data.error);
-                }
-            })
-            .catch(error => {
-                clearInterval(interval);
-                statusDiv.style.display = 'none';
-                showError('forensicResults', 'Erreur analyse: ' + error.message);
-            });
-        }
-
-        function showForensicResults(data) {
-            const resultsDiv = document.getElementById('forensicResults');
-            const contentDiv = document.getElementById('forensicResultsContent');
-            
-            // Fonction pour expliquer les protocoles
-            function explainProtocol(protocol, frames) {
-                const explanations = {
-                    'tcp': `🌐 **Communication Web/Applications** (${frames} paquets)<br><small class="text-muted">Connexions vers sites web, applications, transferts de fichiers</small>`,
-                    'udp': `🔍 **Requêtes DNS/Streaming** (${frames} paquets)<br><small class="text-muted">Résolution de noms de domaine, streaming vidéo/audio</small>`,
-                    'icmp': `📡 **Tests de Connectivité** (${frames} paquets)<br><small class="text-muted">Ping, diagnostic réseau, vérification d'accessibilité</small>`,
-                    'http': `🌍 **Navigation Web Non Sécurisée** (${frames} paquets)<br><small class="text-muted">Sites web sans chiffrement (attention aux données sensibles)</small>`,
-                    'https': `🔒 **Navigation Web Sécurisée** (${frames} paquets)<br><small class="text-muted">Sites web avec chiffrement SSL/TLS</small>`,
-                    'dns': `📞 **Résolution de Noms** (${frames} paquets)<br><small class="text-muted">Conversion nom de domaine → adresse IP</small>`,
-                    'ssh': `🔐 **Connexion Administrateur** (${frames} paquets)<br><small class="text-muted">Accès sécurisé à distance (terminal)</small>`,
-                    'ftp': `📁 **Transfert de Fichiers** (${frames} paquets)<br><small class="text-muted">Upload/download de documents</small>`,
-                    'smtp': `📧 **Envoi d'Emails** (${frames} paquets)<br><small class="text-muted">Transmission de courrier électronique</small>`,
-                    'pop3': `📬 **Réception d'Emails** (${frames} paquets)<br><small class="text-muted">Téléchargement des emails depuis le serveur</small>`,
-                    'imap': `📮 **Gestion d'Emails** (${frames} paquets)<br><small class="text-muted">Synchronisation boîte mail</small>`,
-                    'arp': `🏠 **Découverte Réseau Local** (${frames} paquets)<br><small class="text-muted">Identification des appareils sur le réseau</small>`,
-                    'dhcp': `🔧 **Configuration Réseau** (${frames} paquets)<br><small class="text-muted">Attribution automatique d'adresses IP</small>`,
-                    'mdns': `🔍 **Découverte Services** (${frames} paquets)<br><small class="text-muted">Détection d'imprimantes, partages réseau</small>`
-                };
-                
-                return explanations[protocol.toLowerCase()] || 
-                       `🔧 **Protocole ${protocol.toUpperCase()}** (${frames} paquets)<br><small class="text-muted">Trafic réseau spécialisé</small>`;
-            }
-            
-            // Fonction pour expliquer les conversations
-            function explainConversation(endpoints, packets, bytes) {
-                const [src, dst] = endpoints.split(' <-> ');
-                
-                // Analyser le type de communication
-                if (dst.includes('8.8.8.8') || dst.includes('8.8.4.4')) {
-                    return `🌐 **Requêtes DNS vers Google** (${packets} échanges)<br><small class="text-muted">Résolution de noms de domaine via serveurs Google DNS</small>`;
-                } else if (dst.includes('1.1.1.1') || dst.includes('1.0.0.1')) {
-                    return `🌐 **Requêtes DNS vers Cloudflare** (${packets} échanges)<br><small class="text-muted">Résolution de noms de domaine via serveurs Cloudflare</small>`;
-                } else if (src.startsWith('172.20') && dst.startsWith('172.20')) {
-                    return `🏠 **Communication Interne** (${packets} échanges)<br><small class="text-muted">Trafic entre conteneurs Docker de la toolbox</small>`;
-                } else if (src.startsWith('192.168') && dst.startsWith('192.168')) {
-                    return `🏠 **Réseau Local** (${packets} échanges)<br><small class="text-muted">Communication entre appareils du réseau domestique/entreprise</small>`;
-                } else if (dst.includes(':443') || src.includes(':443')) {
-                    return `🔒 **Connexion HTTPS** (${packets} échanges)<br><small class="text-muted">Navigation sécurisée ou API chiffrée</small>`;
-                } else if (dst.includes(':80') || src.includes(':80')) {
-                    return `🌍 **Connexion HTTP** (${packets} échanges)<br><small class="text-muted">Navigation web non chiffrée</small>`;
-                } else if (dst.includes(':22') || src.includes(':22')) {
-                    return `🔐 **Connexion SSH** (${packets} échanges)<br><small class="text-muted">Administration à distance sécurisée</small>`;
-                } else if (dst.includes(':53') || src.includes(':53')) {
-                    return `📞 **Requête DNS** (${packets} échanges)<br><small class="text-muted">Résolution de nom de domaine</small>`;
-                } else {
-                    return `🔗 **Communication Réseau** (${packets} échanges)<br><small class="text-muted">Entre ${src} et ${dst}</small>`;
-                }
-            }
-            
-            // Générer le HTML des protocoles avec explications
-            let protocolsHtml = '';
-            if (data.protocols && data.protocols.length > 0) {
-                protocolsHtml = data.protocols.map(p => `
-                    <div class="alert alert-light border-start border-primary border-3 py-2 mb-2">
-                        ${explainProtocol(p.protocol, p.frames)}
-                    </div>
-                `).join('');
-            }
-            
-            // Générer le HTML des conversations avec explications
-            let conversationsHtml = '';
-            if (data.conversations && data.conversations.length > 0) {
-                conversationsHtml = data.conversations.map(c => `
-                    <div class="card mb-2">
-                        <div class="card-body py-2">
-                            ${explainConversation(c.endpoints, c.packets, c.bytes)}
-                            <div class="mt-1">
-                                <span class="badge bg-secondary">${c.bytes} bytes</span>
-                                <span class="badge bg-info">${c.packets} paquets</span>
+            </div>
+            <div class="card-body p-4">
+                <!-- Résumé exécutif -->
+                <div class="row mb-5">
+                    <div class="col-12">
+                        <div class="alert alert-info border-0 shadow-sm">
+                            <h5 class="alert-heading">📋 Résumé Exécutif</h5>
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <strong>📦 Total paquets :</strong><br>
+                                    <span class="fs-5 text-primary">${data.general_info?.total_packets || 'N/A'}</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>⏱️ Durée capture :</strong><br>
+                                    <span class="fs-5 text-success">${data.general_info?.duration || 'N/A'}</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>💾 Taille fichier :</strong><br>
+                                    <span class="fs-5 text-info">${data.general_info?.file_size || 'N/A'}</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>🔍 Protocoles :</strong><br>
+                                    <span class="fs-5 text-warning">${data.protocols?.length || 0} types</span>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                `).join('');
-            }
-            
-            // Générer le rapport complet
-            contentDiv.innerHTML = `
-                <div class="card">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">📊 Rapport d'Analyse Forensique - Compréhensible</h5>
-                    </div>
-                    <div class="card-body">
-                        <!-- Résumé exécutif -->
-                        <div class="alert alert-info mb-4">
-                            <h6 class="alert-heading">📋 Résumé de l'Analyse</h6>
-                            <p class="mb-1">
-                                <strong>Total paquets :</strong> ${data.general_info?.total_packets || 'N/A'} |
-                                <strong>Durée :</strong> ${data.general_info?.duration || 'N/A'} |
-                                <strong>Taille :</strong> ${data.general_info?.file_size || 'N/A'}
-                            </p>
+                            <hr>
                             <p class="mb-0">
-                                <strong>Types d'activité détectés :</strong> ${data.protocols?.length || 0} protocoles différents, 
-                                ${data.conversations?.length || 0} conversations réseau principales
+                                <strong>📈 Activité réseau :</strong> ${data.protocols?.length || 0} protocoles différents détectés, 
+                                ${data.conversations?.length || 0} conversations réseau principales analysées
                             </p>
                         </div>
-                        
-                        <!-- Activités détectées -->
-                        <div class="mb-4">
-                            <h6 class="text-primary mb-3">🔍 Activités Réseau Détectées</h6>
-                            ${protocolsHtml || '<div class="alert alert-warning">Aucune activité réseau détectée</div>'}
-                        </div>
-                        
-                        <!-- Communications principales -->
-                        <div class="mb-4">
-                            <h6 class="text-success mb-3">💬 Communications Principales</h6>
-                            ${conversationsHtml || '<div class="alert alert-warning">Aucune communication détectée</div>'}
-                        </div>
-                        
-                        <!-- Actions -->
-                        <div class="d-flex gap-2 mt-4">
-                            <button class="btn btn-primary btn-sm" onclick="downloadPcap('${data.pcap_file}')">
-                                💾 Télécharger PCAP Original
-                            </button>
-                            <button class="btn btn-outline-secondary btn-sm" onclick="exportForensicReport()">
-                                📄 Exporter ce Rapport
-                            </button>
-                        </div>
                     </div>
                 </div>
-            `;
-            
-            resultsDiv.style.display = 'block';
-        }
-
-        // =====================================
-        // FONCTIONS UTILITAIRES
-        // =====================================
-        function showError(containerId, errorMsg) {
-            const container = document.getElementById(containerId);
-            container.innerHTML = `
-                <div class="alert alert-danger">
-                    <strong>❌ Erreur :</strong> ${errorMsg}
-                </div>
-            `;
-            container.style.display = 'block';
-        }
-
-
-        function exportForensicReport() {
-            // Récupérer le contenu du rapport
-            const reportContent = document.getElementById('forensicResultsContent').innerText;
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            
-            // Créer le contenu du rapport
-            const reportText = `
-        RAPPORT D'ANALYSE FORENSIQUE - ${new Date().toLocaleString()}
-        ================================================================
-        
-        ${reportContent}
-        
-        --- Informations techniques ---
-        Généré par : Toolbox Cybersécurité - Module Wireshark
-        Date : ${new Date().toLocaleString()}
-            `.trim();
-            
-            // Télécharger comme fichier texte
-            const blob = new Blob([reportText], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `rapport-forensique-${timestamp}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }
-
-        function addRecentCapture(captureData) {
-            recentCaptures.unshift({
-                target: captureData.target,
-                file: captureData.pcap_file,
-                packets: captureData.packets_captured,
-                timestamp: new Date().toLocaleString()
-            });
-            
-            // Garder max 5 captures
-            recentCaptures = recentCaptures.slice(0, 5);
-            updateRecentCapturesList();
-        }
-
-        function updateRecentCapturesList() {
-            const container = document.getElementById('recentCaptures');
-            
-            if (recentCaptures.length === 0) {
-                container.innerHTML = '<div class="list-group-item text-muted text-center">Aucune capture récente</div>';
-                return;
-            }
-            
-            container.innerHTML = recentCaptures.map(capture => `
-                <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        <strong>${capture.target}</strong><br>
-                        <small class="text-muted">${capture.timestamp} - ${capture.packets} paquets</small>
+                
+                <!-- Protocoles détectés -->
+                <div class="mb-5">
+                    <h5 class="mb-4">🔍 Activités Réseau Détectées</h5>
+                    <div class="row">
+                        ${protocolsHtml || '<div class="col-12"><div class="alert alert-warning">Aucune activité réseau détectée</div></div>'}
                     </div>
+                </div>
+                
+                <!-- Communications principales -->
+                <div class="mb-5">
+                    <h5 class="mb-4">💬 Communications Réseau Principales</h5>
+                    <div class="row">
+                        ${conversationsHtml || '<div class="col-12"><div class="alert alert-warning">Aucune communication détectée</div></div>'}
+                    </div>
+                </div>
+                
+                <!-- Actions finales -->
+                <div class="mt-5 p-4 bg-light rounded">
+                    <h6 class="mb-3">🛠️ Actions Disponibles</h6>
+                    <div class="d-flex gap-3 flex-wrap">
+                        <button class="btn btn-primary" onclick="downloadPcap('${data.pcap_file || ''}')">
+                            <i class="fas fa-download me-2"></i>
+                            Télécharger PCAP Original
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="exportForensicReport()">
+                            <i class="fas fa-file-alt me-2"></i>
+                            Exporter ce Rapport
+                        </button>
+                        <button class="btn btn-outline-success" onclick="window.print()">
+                            <i class="fas fa-print me-2"></i>
+                            Imprimer
+                        </button>
+                        <button class="btn btn-outline-info" onclick="location.reload()">
+                            <i class="fas fa-redo me-2"></i>
+                            Nouvelle Analyse
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    resultsDiv.style.display = 'block';
+}
+
+// =====================================
+// FONCTIONS UTILITAIRES
+// =====================================
+function showError(containerId, errorMsg) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = `
+        <div class="alert alert-danger">
+            <strong>❌ Erreur :</strong> ${errorMsg}
+        </div>
+    `;
+    container.style.display = 'block';
+}
+
+function addRecentCapture(captureData) {
+    recentCaptures.unshift({
+        target: captureData.target,
+        file: captureData.pcap_file,
+        packets: captureData.packets_captured,
+        timestamp: new Date().toLocaleString()
+    });
+    
+    // Garder max 5 captures
+    recentCaptures = recentCaptures.slice(0, 5);
+    updateRecentCapturesList();
+}
+
+function updateRecentCapturesList() {
+    const container = document.getElementById('recentCaptures');
+    const clearBtn = document.getElementById('clearCapturesBtn');
+    
+    if (recentCaptures.length === 0) {
+        container.innerHTML = '<div class="text-muted text-center py-3">Aucune capture récente</div>';
+        if (clearBtn) clearBtn.style.display = 'none';
+        return;
+    }
+    
+    // Montrer le bouton "Vider" s'il y a des captures
+    if (clearBtn) clearBtn.style.display = 'inline-block';
+    
+    container.innerHTML = recentCaptures.map(capture => {
+        // Formatter la date pour l'affichage
+        let displayDate;
+        try {
+            displayDate = new Date(capture.timestamp).toLocaleString('fr-FR');
+        } catch (e) {
+            displayDate = capture.timestamp || 'Date inconnue';
+        }
+        
+        return `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${capture.target}</strong><br>
+                    <small class="text-muted">
+                        📅 ${displayDate} • 
+                        📦 ${capture.packets} paquets • 
+                        💾 ${capture.size}
+                    </small>
+                </div>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-primary" 
+                            onclick="analyzeCapture('${capture.file}')"
+                            title="Analyser cette capture">
+                        🔬
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" 
+                            onclick="downloadPcap('${capture.file}')"
+                            title="Télécharger le fichier">
+                        💾
+                    </button>
                     <button class="btn btn-sm btn-outline-danger" 
-                            onclick="analyzeRecentCapture('${capture.file}')">
-                        🔍 Analyser
+                            onclick="removeCapture('${capture.file}')"
+                            title="Supprimer de la liste">
+                        🗑️
                     </button>
                 </div>
-            `).join('');
-        }
+            </div>
+        `;
+    }).join('');
+}
 
-        function analyzeRecentCapture(pcapFile) {
-            document.getElementById('forensic-tab').click();
+// Fonction pour supprimer une capture de la liste
+function removeCapture(pcapFile) {
+    recentCaptures = recentCaptures.filter(capture => capture.file !== pcapFile);
+    saveRecentCaptures();
+    updateRecentCapturesList();
+}
+
+// Fonction pour vider toutes les captures récentes
+function clearAllCaptures() {
+    if (confirm('Êtes-vous sûr de vouloir supprimer toutes les captures récentes ?')) {
+        recentCaptures = [];
+        saveRecentCaptures();
+        updateRecentCapturesList();
+    }
+}
+
+function analyzeCapture(pcapFile) {
+    // Basculer vers l'onglet forensique
+    document.getElementById('forensic-tab').click();
+    
+    setTimeout(() => {
+        // Démarrer l'analyse directement
+        const progressDiv = document.getElementById('analysisProgress');
+        const resultsDiv = document.getElementById('forensicResults');
+        
+        progressDiv.classList.remove('d-none');
+        resultsDiv.style.display = 'none';
+        
+        // Démarrer l'animation de progression
+        startAnalysisProgressBar();
+        
+        fetch('/traffic/api/forensic-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pcap_file: pcapFile })
+        })
+        .then(response => response.json())
+        .then(data => {
+            progressDiv.classList.add('d-none');
             
-            fetch('/traffic/api/forensic-analysis', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pcap_file: pcapFile })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showForensicResults(data);
-                } else {
-                    showError('forensicResults', data.error);
-                }
-            });
-        }
+            if (data.success) {
+                showForensicResults(data);
+            } else {
+                showError('forensicResults', data.error);
+            }
+        })
+        .catch(error => {
+            progressDiv.classList.add('d-none');
+            showError('forensicResults', 'Erreur analyse: ' + error.message);
+        });
+    }, 500);
+}
 
-        function downloadPcap(pcapFile) {
-            const filename = pcapFile.includes('/') ? pcapFile.split('/').pop() : pcapFile;
-            window.open(`/traffic/api/download/${encodeURIComponent(filename)}`);
-        }
-    </script>
-</body>
-</html>
+function downloadPcap(pcapFile) {
+    const filename = pcapFile.includes('/') ? pcapFile.split('/').pop() : pcapFile;
+    window.open(`/traffic/api/download/${encodeURIComponent(filename)}`);
+}
+
+function exportForensicReport() {
+    // Récupérer le contenu du rapport
+    const reportContent = document.getElementById('forensicResultsContent').innerText;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    
+    // Créer le contenu du rapport
+    const reportText = `
+RAPPORT D'ANALYSE FORENSIQUE - ${new Date().toLocaleString()}
+================================================================
+
+${reportContent}
+
+--- Informations techniques ---
+Généré par : Toolbox Cybersécurité - Module Wireshark
+Date : ${new Date().toLocaleString()}
+    `.trim();
+    
+    // Télécharger comme fichier texte
+    const blob = new Blob([reportText], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rapport-forensique-${timestamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}
+</script>
+
+{% endblock %}

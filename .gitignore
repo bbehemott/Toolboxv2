@@ -143,3 +143,27 @@ cookies.txt
 *.json
 backend/metasploit_validation_report_*.json
 backend/validation/
+
+# Fichiers PCAP et données de capture Wireshark
+/app/data/
+backend/data/
+data/
+*.pcap
+*.pcapng
+*.cap
+
+# Fichiers temporaires d'analyse
+/tmp/upload_*
+/tmp/capture_*
+
+# Logs de Wireshark
+*.tshark.log
+*.tcpdump.log
+
+# Rapports forensiques générés
+rapport-forensique-*.txt
+rapport-forensique-*.pdf
+
+# Sauvegardes et exports
+backup_*.tar.gz
+*_backup_*.sql
