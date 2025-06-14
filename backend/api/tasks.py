@@ -477,53 +477,123 @@ def api_test_task():
             'error': str(e)
         }, 500
 
+
+
 @tasks_bp.route('/api/download-report/<task_id>')
 @login_required
 def download_improved_report_api(task_id):
-    """API pour télécharger des rapports améliorés"""
+    """API pour télécharger des rapports améliorés - VERSION SIMPLE"""
     try:
         format_type = request.args.get('format', 'both')
         
-        # ✅ CORRECTION : Utiliser get_task_status au lieu de get_task_result
         task_manager = TaskManager(current_app.db)
         task_status = task_manager.get_task_status(task_id)
         
         if not task_status:
             return jsonify({'success': False, 'error': 'Tâche introuvable'})
         
-        # ✅ DEBUG : Voir le contenu
-        print("="*50)
-        print(f"task_status keys: {list(task_status.keys()) if task_status else 'None'}")
-        if task_status and 'result' in task_status:
-            print(f"result keys: {list(task_status['result'].keys()) if isinstance(task_status['result'], dict) else task_status['result']}")
-        print("="*50)
+        # DEBUG ÉTENDU - Voir TOUTE la structure
+        logger.info("="*60)
+        logger.info(f"🔍 TASK_STATUS KEYS: {list(task_status.keys()) if task_status else 'None'}")
         
-        # ✅ EXTRACTION CORRIGÉE selon la vraie structure
+        # Extraction plus simple et robuste
         result_data = task_status.get('result', {})
+        logger.info(f"🔍 RESULT_DATA TYPE: {type(result_data)}")
+        logger.info(f"🔍 RESULT_DATA KEYS: {list(result_data.keys()) if isinstance(result_data, dict) else str(result_data)[:200]}")
         
-        # Extraire les hôtes
+        # APPROCHE SIMPLE : Créer un rapport même avec données minimales
         hosts_found = []
-        if isinstance(result_data, dict) and result_data.get('ping_scan', {}).get('parsed', {}).get('hosts_found'):
-            hosts_found = result_data['ping_scan']['parsed']['hosts_found']
-        
-        # Extraire les services depuis port_scans
         services = []
-        if isinstance(result_data, dict) and result_data.get('port_scans'):
-            for port_scan in result_data['port_scans']:
-                host_ip = port_scan.get('host', 'N/A')
-                ports_info = port_scan.get('ports', {}).get('parsed', {})
-                
-                if ports_info.get('open_ports'):
-                    for port_info in ports_info['open_ports']:
-                        services.append({
-                            'name': port_info.get('service', 'unknown'),
-                            'port': port_info.get('port', 'N/A'),
-                            'state': port_info.get('state', 'N/A'),
-                            'host': host_ip,
-                            'protocol': 'tcp'
-                        })
+        vulnerabilities = []
         
-        # Préparer les données pour le rapport
+        # SI C'EST UN DICT, ESSAYER D'EXTRAIRE
+        if isinstance(result_data, dict):
+            # Ping scan
+            ping_data = result_data.get('ping_scan', {})
+            if isinstance(ping_data, dict) and ping_data.get('parsed', {}).get('hosts_found'):
+                hosts_found = ping_data['parsed']['hosts_found']
+                logger.info(f"✅ Hosts depuis ping_scan: {len(hosts_found)}")
+            
+            # Port scans
+            port_scans = result_data.get('port_scans', [])
+            logger.info(f"🔍 Port scans trouvés: {len(port_scans)}")
+            
+            for i, scan in enumerate(port_scans):
+                host = scan.get('host', f'host-{i}')
+                logger.info(f"🖥️ Scan {i}: host={host}")
+                
+                # Chercher les ports dans TOUTES les structures possibles
+                open_ports = []
+                
+                # Structure 1: scan['ports']['parsed']['open_ports']
+                if scan.get('ports', {}).get('parsed', {}).get('open_ports'):
+                    open_ports = scan['ports']['parsed']['open_ports']
+                    logger.info(f"📂 Structure 1: {len(open_ports)} ports")
+                
+                # Structure 2: scan['parsed']['open_ports']
+                elif scan.get('parsed', {}).get('open_ports'):
+                    open_ports = scan['parsed']['open_ports']
+                    logger.info(f"📂 Structure 2: {len(open_ports)} ports")
+                
+                # Structure 3: scan['open_ports']
+                elif scan.get('open_ports'):
+                    open_ports = scan['open_ports']
+                    logger.info(f"📂 Structure 3: {len(open_ports)} ports")
+                
+                # Ajouter les services
+                for port in open_ports:
+                    service = {
+                        'name': port.get('service', 'unknown'),
+                        'port': port.get('port', 'N/A'),
+                        'state': port.get('state', 'open'),
+                        'host': host,
+                        'protocol': port.get('protocol', 'tcp'),
+                        'version': port.get('version', 'Non identifiée')
+                    }
+                    services.append(service)
+                    logger.info(f"➕ Service: {service['name']} sur {service['port']}")
+        
+        # SI PAS D'HÔTES MAIS DES SERVICES, CRÉER L'HÔTE
+        if not hosts_found and services:
+            unique_hosts = set(s['host'] for s in services)
+            for host_ip in unique_hosts:
+                host_services = [s for s in services if s['host'] == host_ip]
+                hosts_found.append({
+                    'host': host_ip,
+                    'ip': host_ip,
+                    'status': 'up',
+                    'hostname': '',
+                    'os': 'Non identifié',
+                    'open_ports': [f"{s['port']}/{s['protocol']}" for s in host_services]
+                })
+                logger.info(f"🖥️ Hôte créé: {host_ip} avec {len(host_services)} services")
+        
+        # Vulnérabilités selon services
+        vuln_map = {
+            'ftp': ('FTP détecté', 'Medium', 'Test accès anonyme'),
+            'ssh': ('SSH ouvert', 'Info', 'Vérifier config'),
+            'telnet': ('Telnet non sécurisé', 'High', 'Texte clair'),
+            'http': ('Service web', 'Medium', 'Audit web requis'),
+            'mysql': ('MySQL détecté', 'High', 'Test credentials'),
+            'smtp': ('SMTP ouvert', 'Medium', 'Vérifier config'),
+            'exec': ('Service EXEC', 'Critical', 'Service dangereux'),
+            'shell': ('Shell service', 'Critical', 'Accès shell'),
+            'login': ('Login service', 'High', 'Auth exposée')
+        }
+        
+        for service in services:
+            name = service['name'].lower()
+            for pattern, (title, sev, desc) in vuln_map.items():
+                if pattern in name:
+                    vulnerabilities.append({
+                        'title': title,
+                        'severity': sev,
+                        'cve': 'N/A',
+                        'port': service['port'],
+                        'description': desc
+                    })
+        
+        # DONNÉES POUR LE RAPPORT
         task_data = {
             'task_id': task_id,
             'target': task_status.get('target', 'N/A'),
@@ -531,11 +601,18 @@ def download_improved_report_api(task_id):
             'duration': '< 1 minute',
             'hosts_found': hosts_found,
             'services': services,
-            'vulnerabilities': [],
-            'raw_output': result_data.get('ping_scan', {}).get('stdout', '') if isinstance(result_data, dict) else ''
+            'vulnerabilities': vulnerabilities,
+            'raw_output': _extract_raw_simple(result_data)
         }
         
-        # Générer les rapports
+        # LOG FINAL
+        logger.info(f"📊 RAPPORT FINAL:")
+        logger.info(f"  - Hôtes: {len(hosts_found)}")
+        logger.info(f"  - Services: {len(services)}")
+        logger.info(f"  - Vulnérabilités: {len(vulnerabilities)}")
+        logger.info("="*60)
+        
+        # GÉNÉRER RAPPORT
         exporter = ImprovedReportExporter()
         reports = exporter.generate_discovery_report(task_data, format_type)
         
@@ -545,10 +622,42 @@ def download_improved_report_api(task_id):
         })
         
     except Exception as e:
-        logger.error(f"Erreur génération rapport: {e}")
+        logger.error(f"❌ Erreur rapport: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)})
 
 
+def _extract_raw_simple(result_data):
+    """Extraction simple de raw output"""
+    if not isinstance(result_data, dict):
+        return 'Données non disponibles'
+    
+    parts = []
+    
+    # Ping scan
+    ping = result_data.get('ping_scan', {})
+    if ping.get('stdout'):
+        parts.append("=== PING SCAN ===")
+        parts.append(ping['stdout'])
+    
+    # Port scans
+    for i, scan in enumerate(result_data.get('port_scans', [])):
+        host = scan.get('host', f'host-{i}')
+        parts.append(f"\n=== PORT SCAN - {host} ===")
+        
+        # Chercher stdout
+        if scan.get('ports', {}).get('stdout'):
+            parts.append(scan['ports']['stdout'])
+        elif scan.get('stdout'):
+            parts.append(scan['stdout'])
+        else:
+            parts.append("Sortie non disponible")
+    
+    return '\n'.join(parts) if parts else 'Aucune sortie disponible'
+
+
+# AJOUTER AUSSI cette route pour le téléchargement de PDF
 @tasks_bp.route('/api/download-pdf/<filename>')
 @login_required
 def download_pdf_file(filename):
