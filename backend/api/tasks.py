@@ -1,6 +1,9 @@
 from flask import Blueprint, request, render_template, session, current_app, jsonify
 from auth import login_required, admin_required
 from services.task_manager import TaskManager
+from flask import send_file
+from .report_exporter import ImprovedReportExporter
+import os
 import logging
 
 logger = logging.getLogger('toolbox.tasks')
@@ -472,3 +475,55 @@ def api_test_task():
             'success': False,
             'error': str(e)
         }, 500
+
+
+@tasks_bp.route('/api/download-report/<task_id>')
+@login_required
+def download_improved_report_api(task_id):
+    """API pour télécharger des rapports améliorés"""
+    try:
+        format_type = request.args.get('format', 'both')
+        
+        # Récupérer les données de la tâche
+        task_manager = TaskManager(current_app.db)
+        task_result = task_manager.get_task_result(task_id)
+        
+        if not task_result:
+            return jsonify({'success': False, 'error': 'Tâche introuvable'})
+        
+        # Préparer les données pour le rapport
+        task_data = {
+            'task_id': task_id,
+            'target': task_result.get('meta', {}).get('target', 'N/A'),
+            'scan_type': task_result.get('meta', {}).get('scan_type', 'Scan'),
+            'duration': task_result.get('meta', {}).get('duration', '< 1 minute'),
+            'hosts_found': task_result.get('result', {}).get('hosts', []),
+            'services': task_result.get('result', {}).get('services', []),
+            'vulnerabilities': task_result.get('result', {}).get('vulnerabilities', []),
+            'raw_output': task_result.get('result', {}).get('raw_output', '')
+        }
+        
+        # Générer les rapports
+        exporter = ImprovedReportExporter()
+        reports = exporter.generate_discovery_report(task_data, format_type)
+        
+        return jsonify({
+            'success': True,
+            **reports
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@tasks_bp.route('/api/download-pdf/<filename>')
+@login_required
+def download_pdf_file(filename):
+    """Télécharger un fichier PDF généré"""
+    try:
+        filepath = f"/tmp/{filename}"
+        if os.path.exists(filepath):
+            return send_file(filepath, as_attachment=True, download_name=filename)
+        else:
+            return jsonify({'error': 'Fichier introuvable'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

@@ -725,8 +725,14 @@ function showDiscoveryResults(result) {
         // Boutons d'action
         html += `
             <div class="mt-4">
-                <button class="btn btn-primary" onclick="downloadResults()">
-                    💾 Télécharger rapport complet
+                <button class="btn btn-primary" onclick="downloadImprovedReport('txt')">
+                    📄 Rapport TXT
+                </button>
+                <button class="btn btn-danger" onclick="downloadImprovedReport('pdf')">
+                    📑 Rapport PDF
+                </button>
+                <button class="btn btn-success" onclick="downloadImprovedReport('both')">
+                    📦 Les deux formats
                 </button>
                 <button class="btn btn-outline-info" onclick="copyResultsToClipboard()">
                     📋 Copier dans le presse-papier
@@ -1345,8 +1351,14 @@ function showMetasploitVersionResults(result) {
     // ✅ NOUVEAU: Boutons d'action améliorés
     html += `
         <div class="mt-4">
-            <button class="btn btn-primary" onclick="downloadResults()">
-                💾 Télécharger rapport complet
+            <button class="btn btn-primary" onclick="downloadImprovedReport('txt')">
+                📄 Rapport TXT
+            </button>
+            <button class="btn btn-danger" onclick="downloadImprovedReport('pdf')">
+                📑 Rapport PDF
+            </button>
+            <button class="btn btn-success" onclick="downloadImprovedReport('both')">
+                📦 Les deux formats
             </button>
             <button class="btn btn-outline-info" onclick="copyResultsToClipboard()">
                 📋 Copier résultats
@@ -1705,6 +1717,61 @@ function cancelTask() {
 window.addEventListener('beforeunload', function() {
     stopAutoRefresh();
 });
+
+
+function downloadImprovedReport(format = 'both') {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '⏳ Génération...';
+    button.disabled = true;
+    
+    addLogEntry(`🔄 Génération du rapport en format ${format}...`, 'info');
+    
+    fetch(`/tasks/api/download-report/${taskId}?format=${format}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Télécharger le fichier TXT
+                if (data.txt_content) {
+                    downloadTextFile(data.txt_content, `rapport-${taskId}.txt`);
+                    addLogEntry('✅ Rapport TXT téléchargé', 'info');
+                }
+                
+                // Ouvrir le PDF
+                if (data.pdf_path) {
+                    window.open(data.pdf_path, '_blank');
+                    addLogEntry('✅ Rapport PDF généré', 'info');
+                }
+                
+                addLogEntry('🎉 Tous les rapports ont été téléchargés avec succès', 'info');
+            } else {
+                addLogEntry('❌ Erreur génération rapport: ' + data.error, 'error');
+                alert('Erreur lors de la génération du rapport: ' + data.error);
+            }
+        })
+        .catch(error => {
+            addLogEntry('❌ Erreur téléchargement: ' + error.message, 'error');
+            alert('Erreur de connexion: ' + error.message);
+        })
+        .finally(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        });
+}
+
+// Fonction helper pour télécharger les fichiers texte
+function downloadTextFile(content, filename) {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 </script>
 
 {% endblock %}
