@@ -5,6 +5,7 @@ from flask import send_file
 from .report_exporter import ImprovedReportExporter
 import os
 import logging
+import json
 
 logger = logging.getLogger('toolbox.tasks')
 
@@ -476,7 +477,6 @@ def api_test_task():
             'error': str(e)
         }, 500
 
-
 @tasks_bp.route('/api/download-report/<task_id>')
 @login_required
 def download_improved_report_api(task_id):
@@ -484,23 +484,55 @@ def download_improved_report_api(task_id):
     try:
         format_type = request.args.get('format', 'both')
         
-        # Récupérer les données de la tâche
+        # ✅ CORRECTION : Utiliser get_task_status au lieu de get_task_result
         task_manager = TaskManager(current_app.db)
-        task_result = task_manager.get_task_result(task_id)
+        task_status = task_manager.get_task_status(task_id)
         
-        if not task_result:
+        if not task_status:
             return jsonify({'success': False, 'error': 'Tâche introuvable'})
+        
+        # ✅ DEBUG : Voir le contenu
+        print("="*50)
+        print(f"task_status keys: {list(task_status.keys()) if task_status else 'None'}")
+        if task_status and 'result' in task_status:
+            print(f"result keys: {list(task_status['result'].keys()) if isinstance(task_status['result'], dict) else task_status['result']}")
+        print("="*50)
+        
+        # ✅ EXTRACTION CORRIGÉE selon la vraie structure
+        result_data = task_status.get('result', {})
+        
+        # Extraire les hôtes
+        hosts_found = []
+        if isinstance(result_data, dict) and result_data.get('ping_scan', {}).get('parsed', {}).get('hosts_found'):
+            hosts_found = result_data['ping_scan']['parsed']['hosts_found']
+        
+        # Extraire les services depuis port_scans
+        services = []
+        if isinstance(result_data, dict) and result_data.get('port_scans'):
+            for port_scan in result_data['port_scans']:
+                host_ip = port_scan.get('host', 'N/A')
+                ports_info = port_scan.get('ports', {}).get('parsed', {})
+                
+                if ports_info.get('open_ports'):
+                    for port_info in ports_info['open_ports']:
+                        services.append({
+                            'name': port_info.get('service', 'unknown'),
+                            'port': port_info.get('port', 'N/A'),
+                            'state': port_info.get('state', 'N/A'),
+                            'host': host_ip,
+                            'protocol': 'tcp'
+                        })
         
         # Préparer les données pour le rapport
         task_data = {
             'task_id': task_id,
-            'target': task_result.get('meta', {}).get('target', 'N/A'),
-            'scan_type': task_result.get('meta', {}).get('scan_type', 'Scan'),
-            'duration': task_result.get('meta', {}).get('duration', '< 1 minute'),
-            'hosts_found': task_result.get('result', {}).get('hosts', []),
-            'services': task_result.get('result', {}).get('services', []),
-            'vulnerabilities': task_result.get('result', {}).get('vulnerabilities', []),
-            'raw_output': task_result.get('result', {}).get('raw_output', '')
+            'target': task_status.get('target', 'N/A'),
+            'scan_type': task_status.get('task_type', 'Découverte réseau'),
+            'duration': '< 1 minute',
+            'hosts_found': hosts_found,
+            'services': services,
+            'vulnerabilities': [],
+            'raw_output': result_data.get('ping_scan', {}).get('stdout', '') if isinstance(result_data, dict) else ''
         }
         
         # Générer les rapports
@@ -513,7 +545,9 @@ def download_improved_report_api(task_id):
         })
         
     except Exception as e:
+        logger.error(f"Erreur génération rapport: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
 
 @tasks_bp.route('/api/download-pdf/<filename>')
 @login_required
