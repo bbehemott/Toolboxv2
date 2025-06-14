@@ -9,6 +9,7 @@ from database import DatabaseManager
 from auth import AuthManager
 from security import MinIOClient
 from api.security import register_security_api
+from api.security_dashboard import register_security_dashboard
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -66,6 +67,8 @@ def create_app(config_name=None):
     register_template_helpers(app)
 
     register_security_api(app)
+
+    register_security_dashboard(app)
 
     log_services_status(app)
 
