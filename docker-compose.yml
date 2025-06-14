@@ -12,6 +12,7 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
+    privileged: true
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=1

@@ -8,6 +8,7 @@ from config import config
 from database import DatabaseManager
 from auth import AuthManager
 from security import MinIOClient
+from api.security import register_security_api
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -63,6 +64,8 @@ def create_app(config_name=None):
     
     # Context processors pour les templates
     register_template_helpers(app)
+
+    register_security_api(app)
 
     log_services_status(app)
 

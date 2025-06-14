@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     dnsutils \
     iputils-ping \
+    iptables \
     \
     # Dépendances pour compilation
     libssl-dev \
