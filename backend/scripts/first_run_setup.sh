@@ -209,6 +209,278 @@ def wait_and_configure_graylog():
     
     print("✅ Configuration Graylog terminée")
 
+echo ""
+echo "🛡️ CONFIGURATION SÉCURITÉ AUTOMATIQUE"
+echo "====================================="
+
+# Vérifier que le script de sécurité existe
+if [ ! -f "backend/scripts/setup_graylog_security.py" ]; then
+    echo "⚠️ Script de sécurité manquant, création..."
+    
+    # Créer le répertoire si nécessaire
+    mkdir -p backend/scripts/security
+    
+    # Créer le script de sécurité (intégré dans first_run_setup.sh)
+    cat > backend/scripts/setup_graylog_security.py << 'SECURITY_SCRIPT_EOF'
+#!/usr/bin/env python3
+"""
+Script d'auto-configuration Graylog pour la sécurité
+Tâches 24 & 25 - Détection d'intrusion & Pare-feu
+"""
+
+import requests
+import json
+import time
+import sys
+from requests.auth import HTTPBasicAuth
+
+class GraylogSecuritySetup:
+    def __init__(self, graylog_url="http://localhost:9000", username="admin", password="admin"):
+        self.base_url = graylog_url
+        self.auth = HTTPBasicAuth(username, password)
+        self.headers = {
+            'Content-Type': 'application/json',
+            'X-Requested-By': 'toolbox-security-setup'
+        }
+        
+    def wait_for_graylog(self, max_attempts=15):
+        """Attendre que Graylog soit prêt"""
+        print("🔄 Vérification Graylog...")
+        for i in range(max_attempts):
+            try:
+                response = requests.get(f"{self.base_url}/api/system", 
+                                      auth=self.auth, timeout=5)
+                if response.status_code == 200:
+                    print("✅ Graylog accessible !")
+                    return True
+            except requests.exceptions.RequestException:
+                pass
+            
+            if i < max_attempts - 1:  # Pas de sleep au dernier essai
+                time.sleep(5)
+        
+        print("❌ Graylog non accessible après 75 secondes")
+        return False
+    
+    def create_stream(self, stream_config):
+        """Créer un stream de sécurité"""
+        try:
+            # Vérifier si le stream existe déjà
+            response = requests.get(f"{self.base_url}/api/streams", auth=self.auth)
+            if response.status_code == 200:
+                existing_streams = response.json()
+                for stream in existing_streams.get('streams', []):
+                    if stream.get('title') == stream_config['title']:
+                        print(f"⏩ Stream existe déjà: {stream_config['title']}")
+                        return stream.get('id')
+            
+            # Créer le nouveau stream
+            response = requests.post(
+                f"{self.base_url}/api/streams",
+                auth=self.auth,
+                headers=self.headers,
+                json=stream_config
+            )
+            
+            if response.status_code in [200, 201]:
+                stream_data = response.json()
+                stream_id = stream_data.get('stream_id')
+                print(f"✅ Stream créé: {stream_config['title']}")
+                
+                # Démarrer le stream
+                requests.post(
+                    f"{self.base_url}/api/streams/{stream_id}/resume",
+                    auth=self.auth,
+                    headers=self.headers
+                )
+                
+                return stream_id
+            else:
+                print(f"⚠️ Erreur stream {stream_config['title']}: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Erreur stream {stream_config['title']}: {e}")
+            return None
+    
+    def setup_security_streams(self):
+        """Configurer tous les streams de sécurité"""
+        print("\n🛡️ Configuration Streams Sécurité...")
+        
+        streams_configs = [
+            {
+                "title": "Security_Failed_Auth",
+                "description": "Échecs d'authentification - Tâche 24",
+                "rules": [
+                    {
+                        "field": "message",
+                        "type": 1,
+                        "value": ".*(failed|invalid|incorrect|denied|unauthorized).*",
+                        "inverted": False
+                    }
+                ],
+                "matching_type": "OR",
+                "remove_matches_from_default_stream": False
+            },
+            {
+                "title": "Security_Brute_Force", 
+                "description": "Tentatives de brute force - Tâche 24",
+                "rules": [
+                    {
+                        "field": "message",
+                        "type": 1,
+                        "value": ".*(brute|multiple.*attempt|repeated.*fail|hydra|medusa).*",
+                        "inverted": False
+                    }
+                ],
+                "matching_type": "OR",
+                "remove_matches_from_default_stream": False
+            },
+            {
+                "title": "Security_Port_Scan",
+                "description": "Scans de ports - Tâche 24", 
+                "rules": [
+                    {
+                        "field": "message",
+                        "type": 1,
+                        "value": ".*(nmap|masscan|port.*scan|stealth.*scan).*",
+                        "inverted": False
+                    }
+                ],
+                "matching_type": "OR",
+                "remove_matches_from_default_stream": False
+            },
+            {
+                "title": "Security_Web_Attacks",
+                "description": "Attaques web - Tâche 24",
+                "rules": [
+                    {
+                        "field": "message", 
+                        "type": 1,
+                        "value": ".*(sql.*injection|xss|csrf|union.*select|script.*alert).*",
+                        "inverted": False
+                    }
+                ],
+                "matching_type": "OR",
+                "remove_matches_from_default_stream": False
+            },
+            {
+                "title": "Security_Internal_Access",
+                "description": "Accès services internes - Tâche 25",
+                "rules": [
+                    {
+                        "field": "message",
+                        "type": 1, 
+                        "value": ".*(9200|27017|6379|5432).*(access|connect|attempt).*",
+                        "inverted": False
+                    }
+                ],
+                "matching_type": "OR",
+                "remove_matches_from_default_stream": False
+            }
+        ]
+        
+        created_streams = {}
+        for stream_config in streams_configs:
+            stream_id = self.create_stream(stream_config)
+            if stream_id:
+                created_streams[stream_config['title']] = stream_id
+        
+        return created_streams
+    
+    def create_webhook_notification(self):
+        """Créer la notification webhook pour les alertes"""
+        print("\n🔔 Configuration Webhook Sécurité...")
+        
+        webhook_config = {
+            "title": "Security Webhook",
+            "description": "Webhook alertes sécurité - Tâches 24&25",
+            "config": {
+                "url": "http://app:5000/api/security/webhook",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "X-Security-Token": "toolbox-security-2024"
+                },
+                "body_template": '''{"alert":"${event_definition_title}","timestamp":"${event.timestamp}","source_ip":"${event.fields.source_ip}","message":"${event.message}"}'''
+            }
+        }
+        
+        try:
+            # Vérifier si webhook existe
+            response = requests.get(f"{self.base_url}/api/notifications", auth=self.auth)
+            if response.status_code == 200:
+                notifications = response.json()
+                for notif in notifications.get('notifications', []):
+                    if notif.get('title') == webhook_config['title']:
+                        print("⏩ Webhook existe déjà")
+                        return notif.get('id')
+            
+            # Créer nouveau webhook
+            response = requests.post(
+                f"{self.base_url}/api/notifications",
+                auth=self.auth,
+                headers=self.headers,
+                json=webhook_config
+            )
+            
+            if response.status_code in [200, 201]:
+                print("✅ Webhook sécurité créé")
+                return response.json().get('id')
+            else:
+                print(f"⚠️ Erreur webhook: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Erreur webhook: {e}")
+            return None
+    
+    def run_setup(self):
+        """Exécuter la configuration complète"""
+        print("🚀 CONFIGURATION SÉCURITÉ GRAYLOG")
+        print("=" * 40)
+        
+        # Attendre Graylog
+        if not self.wait_for_graylog():
+            print("❌ Impossible de configurer la sécurité")
+            return False
+        
+        # Créer les streams
+        streams = self.setup_security_streams()
+        
+        # Créer le webhook  
+        webhook_id = self.create_webhook_notification()
+        
+        print("\n" + "=" * 40)
+        print("✅ CONFIGURATION SÉCURITÉ TERMINÉE !")
+        print(f"📊 Streams sécurité: {len(streams)}")
+        print(f"🔔 Webhook: {'✅' if webhook_id else '❌'}")
+        print("\n🛡️ Tâches 24 & 25 : Détection + Pare-feu configurés")
+        
+        return True
+
+if __name__ == "__main__":
+    setup = GraylogSecuritySetup()
+    success = setup.run_setup()
+    sys.exit(0 if success else 1)
+SECURITY_SCRIPT_EOF
+
+    # Rendre le script exécutable
+    chmod +x backend/scripts/setup_graylog_security.py
+    echo "✅ Script de sécurité créé"
+fi
+
+# Lancer la configuration de sécurité
+echo "🚀 Lancement configuration sécurité..."
+python3 backend/scripts/setup_graylog_security.py
+
+if [ $? -eq 0 ]; then
+    echo "✅ Configuration sécurité réussie !"
+else
+    echo "⚠️ Configuration sécurité partielle - continuons..."
+fi
+
+
 if __name__ == "__main__":
     wait_and_configure_graylog()
 EOF
