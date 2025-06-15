@@ -37,19 +37,18 @@
   </div>
 </div>
 
-<!-- Zone d'intégration -->
-<!-- Zone modules HuntKit -->
+<!-- Modules HuntKit - Découverte et Reconnaissance -->
 <div class="row mb-4">
   <div class="col-md-12">
-    <h4>🔧 Modules HuntKit Intégrés</h4>
+    <h4>🔧 Modules de Découverte et Reconnaissance</h4>
   </div>
   
   {% if current_user and current_user.role in ['pentester', 'admin'] %}
   <div class="col-md-3">
     <div class="card border-primary h-100">
       <div class="card-body text-center">
-        <h5 class="card-title">🌐 Découverte</h5>
-        <p class="card-text">Scan réseau avec Nmap</p>
+        <h5 class="card-title">🌐 Découverte Réseau</h5>
+        <p class="card-text">Scan réseau avec Nmap, énumération des services</p>
         <a href="/huntkit/discovery" class="btn btn-primary btn-sm">Lancer</a>
       </div>
     </div>
@@ -72,12 +71,25 @@
       </div>
     </div>
   </div>
-  <div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card border-info h-100">
+      <div class="card-body text-center">
+        <h5 class="card-title">🌐 Wireshark</h5>
+        <p class="card-text">Capture et analyse du trafic réseau</p>
+        <a href="/traffic/" class="btn btn-info btn-sm">Capturer</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Framework Metasploit -->
+<div class="row mb-4">
   <div class="col-md-12">
     <h5 class="text-muted">🎪 Framework Metasploit</h5>
   </div>
   
-  <div class="col-md-4">
+  <div class="col-md-12">
     <div class="card border-dark h-100" style="background: linear-gradient(135deg, #2c3e50, #34495e);">
       <div class="card-body text-center text-white">
         <h5 class="card-title">🎯 Exploitation</h5>
@@ -89,53 +101,7 @@
       </div>
     </div>
   </div>
-  
-  <div class="col-md-4">
-    <div class="card border-info h-100">
-      <div class="card-body text-center">
-        <h5 class="card-title">🔍 Recherche</h5>
-        <p class="card-text">Base d'exploits Metasploit</p>
-        <small class="d-block mb-2">2000+ exploits • CVE • Modules</small>
-        <a href="/huntkit/exploit#search" class="btn btn-info btn-sm">Rechercher</a>
-      </div>
-    </div>
-  </div>
-  
-  <div class="col-md-4">
-    <div class="card border-secondary h-100">
-      <div class="card-body text-center">
-        <h5 class="card-title">🧪 Test Framework</h5>
-        <p class="card-text">Vérification installation</p>
-        <small class="d-block mb-2">Tests • Version • Modules</small>
-        <a href="/huntkit/exploit#test" class="btn btn-secondary btn-sm">Tester</a>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-danger h-100">
-      <div class="card-body text-center">
-        <h5 class="card-title">🎯 Pentest</h5>
-        <p class="card-text">Chaîne complète</p>
-        <a href="/huntkit/full-pentest" class="btn btn-danger btn-sm">Lancer</a>
-      </div>
-    </div>
-  </div>
-  {% else %}
-  <div class="col-md-12">
-    <div class="alert alert-info">
-      <strong>ℹ️ Modules disponibles</strong><br>
-      Les modules de pentest HuntKit sont disponibles pour les utilisateurs avec le rôle <strong>pentester</strong> ou <strong>admin</strong>.
-    </div>
-  </div>
-  {% endif %}
-  
-  <div class="col-md-12 mt-3">
-    <div class="text-center">
-      <a href="/huntkit/tools-status" class="btn btn-outline-info">🔧 Vérifier statut des outils</a>
-    </div>
-  </div>
 </div>
-
 
 <!-- Activité récente -->
 <div class="row">
@@ -181,38 +147,43 @@
     <div class="alert alert-info">
       <h6>ℹ️ Infrastructure opérationnelle</h6>
       <div class="row">
-        <div class="col-md-4">
-          <strong>🔧 Composants actifs :</strong>
+        <div class="col-md-3">
+          <strong>🔧 Core Framework :</strong>
           <ul class="mb-0">
-            <li>Flask (API & Web UI)</li>
+            <li>Python 3.x + Flask API</li>
             <li>Celery (Tâches asynchrones)</li>
-            <li>Redis (Broker de messages)</li>
-            <li>SQLite (Base de données)</li>
+            <li>Redis (Broker)</li>
+            <li>PostgreSQL + MinIO</li>
           </ul>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+          <strong>🎯 Outils Intégrés :</strong>
+          <ul class="mb-0">
+            <li>Nmap, Metasploit, Hydra</li>
+            <li>Nikto, SQLMap, OWASP ZAP</li>
+            <li>Wireshark (capture trafic)</li>
+            <li>Framework modulaire</li>
+          </ul>
+        </div>
+        <div class="col-md-3">
           <strong>📊 Monitoring :</strong>
           <ul class="mb-0">
             <li><a href="http://localhost:5555" target="_blank">Flower (Celery)</a></li>
             <li><a href="http://localhost:9000" target="_blank">Graylog (Logs)</a></li>
+            <li><a href="http://localhost:5601" target="_blank">Kibana</a></li>
           </ul>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <strong>🎯 Cibles de test :</strong>
           <ul class="mb-0">
             <li><a href="http://localhost:8080" target="_blank">DVWA</a></li>
             <li>Réseau Docker (172.20.0.0/16)</li>
+            <li><a href="/huntkit/tools-status" class="text-decoration-none">🔧 Statut des outils</a></li>
           </ul>
         </div>
       </div>
     </div>
   </div>
 </div>
-
-<style>
-.border-dashed {
-  border: 2px dashed #dee2e6 !important;
-}
-</style>
 
 {% endblock %}
