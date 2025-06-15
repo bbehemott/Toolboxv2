@@ -362,16 +362,68 @@ def download_improved_report_api(task_id):
 @tasks_bp.route('/api/download-pdf/<filename>')
 @login_required
 def download_pdf_file(filename):
-    """Télécharger un fichier PDF généré"""
+    """Télécharger un fichier PDF généré - VERSION CORRIGÉE"""
     try:
-        filepath = f"/tmp/{filename}"
-        if os.path.exists(filepath):
-            return send_file(filepath, as_attachment=True, download_name=filename)
-        else:
-            return jsonify({'error': 'Fichier introuvable'}), 404
+        # Sécurité : vérifier le nom de fichier
+        from werkzeug.utils import secure_filename
+        safe_filename = secure_filename(filename)
+        
+        # Chercher le fichier dans plusieurs emplacements possibles
+        possible_paths = [
+            f"/tmp/{safe_filename}",
+            f"/app/tmp/{safe_filename}",
+            f"./tmp/{safe_filename}",
+            f"/var/tmp/{safe_filename}"
+        ]
+        
+        filepath = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                filepath = path
+                logger.info(f"✅ PDF trouvé: {filepath}")
+                break
+        
+        if not filepath:
+            logger.error(f"❌ PDF introuvable: {safe_filename}")
+            logger.error(f"🔍 Chemins testés: {possible_paths}")
+            
+            # Lister le contenu de /tmp pour debug
+            try:
+                tmp_files = os.listdir("/tmp")
+                logger.error(f"📁 Fichiers dans /tmp: {tmp_files}")
+            except:
+                pass
+                
+            return jsonify({
+                'error': 'Fichier PDF introuvable', 
+                'filename': safe_filename,
+                'message': 'Le fichier a peut-être expiré ou été supprimé'
+            }), 404
+        
+        # Vérifier que c'est bien un PDF
+        if not safe_filename.lower().endswith('.pdf'):
+            return jsonify({'error': 'Type de fichier non autorisé'}), 400
+        
+        # Télécharger le fichier
+        logger.info(f"📄 Téléchargement PDF: {filepath}")
+        return send_file(
+            filepath, 
+            as_attachment=True, 
+            download_name=safe_filename,
+            mimetype='application/pdf'
+        )
+        
+    except FileNotFoundError:
+        logger.error(f"❌ Fichier non trouvé: {filename}")
+        return jsonify({'error': 'Fichier introuvable'}), 404
+    except PermissionError:
+        logger.error(f"❌ Permission refusée: {filename}")
+        return jsonify({'error': 'Accès refusé au fichier'}), 403
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
+        logger.error(f"❌ Erreur téléchargement PDF: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': f'Erreur serveur: {str(e)}'}), 500
 
 # ===== FONCTIONS DE PARSING SPÉCIALISÉES =====
 
@@ -1031,17 +1083,3 @@ def _extract_raw_structured(result_data):
     return '\n'.join(parts) if parts else 'Aucune sortie disponible'
 
 
-def generate_pdf_report(self, data):
-    """Génération PDF complète avec toutes les données"""
-    # Ajouter les sections manquantes pour les hôtes, services, vulnérabilités
-    if data['hosts_found']:
-        story.append(Paragraph("🖥️ Hôtes Découverts", self.styles['CustomHeading']))
-        # Ajouter tableau des hôtes
-
-    if data['services']:
-        story.append(Paragraph("🔧 Services Identifiés", self.styles['CustomHeading']))
-        # Ajouter tableau des services
-
-    if data['vulnerabilities']:
-        story.append(Paragraph("🚨 Vulnérabilités", self.styles['CustomHeading']))
-        # Ajouter tableau des vulnérabilités
