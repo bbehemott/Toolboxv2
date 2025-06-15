@@ -672,41 +672,48 @@ class DatabaseManager:
 
     def assign_task_to_user(self, task_id: str, assigned_to_user_id: int, 
                            assigned_by_user_id: int, message: str = '') -> bool:
-        """Attribuer une tâche à un utilisateur"""
+        """Attribuer une tâche à un utilisateur - VERSION POSTGRESQL"""
         try:
-            cursor = self.connection.cursor()
-            cursor.execute('''
-                INSERT INTO task_assignments 
-                (task_id, assigned_to_user_id, assigned_by_user_id, message)
-                VALUES (?, ?, ?, ?)
-            ''', (task_id, assigned_to_user_id, assigned_by_user_id, message))
-            
-            self.connection.commit()
-            return True
-            
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO task_assignments 
+                    (task_id, assigned_to_user_id, assigned_by_user_id, message)
+                    VALUES (%s, %s, %s, %s)
+                ''', (task_id, assigned_to_user_id, assigned_by_user_id, message))
+                
+                conn.commit()
+                logger.info(f"✅ Tâche {task_id} attribuée à l'utilisateur {assigned_to_user_id}")
+                return True
+                
         except Exception as e:
-            logger.error(f"Erreur attribution tâche: {e}")
+            logger.error(f"❌ Erreur attribution tâche: {e}")
             return False
-    
+
+
     def get_assigned_tasks(self, user_id: int) -> List[Dict]:
-        """Récupérer les tâches attribuées à un utilisateur"""
+        """Récupérer les tâches attribuées à un utilisateur - VERSION POSTGRESQL"""
         try:
-            cursor = self.connection.cursor()
-            cursor.execute('''
-                SELECT ta.*, t.*, u.username as assigned_by_username
-                FROM task_assignments ta
-                JOIN tasks t ON ta.task_id = t.task_id
-                JOIN users u ON ta.assigned_by_user_id = u.id
-                WHERE ta.assigned_to_user_id = ?
-                ORDER BY ta.assigned_at DESC
-            ''', (user_id,))
-            
-            return [dict(row) for row in cursor.fetchall()]
-            
+            with self.get_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute('''
+                    SELECT ta.*, t.*, u.username as assigned_by_username
+                    FROM task_assignments ta
+                    JOIN tasks t ON ta.task_id = t.task_id
+                    JOIN users u ON ta.assigned_by_user_id = u.id
+                    WHERE ta.assigned_to_user_id = %s
+                    ORDER BY ta.assigned_at DESC
+                ''', (user_id,))
+                
+                results = [dict(row) for row in cursor.fetchall()]
+                logger.info(f"📋 {len(results)} tâches attribuées trouvées pour l'utilisateur {user_id}")
+                return results
+                
         except Exception as e:
-            logger.error(f"Erreur récupération tâches attribuées: {e}")
+            logger.error(f"❌ Erreur récupération tâches attribuées: {e}")
             return []
-    
+
+
     def get_users_by_role(self, role: str) -> List[Dict]:
         """Récupérer tous les utilisateurs avec un rôle spécifique"""
         try:
@@ -724,3 +731,23 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Erreur récupération utilisateurs par rôle: {e}")
             return []
+
+
+    def get_user_by_id(self, user_id: int) -> Optional[Dict]:
+        """Récupère un utilisateur par son ID"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute('''
+                    SELECT id, username, role, created_at, last_login, active
+                    FROM users WHERE id = %s
+                ''', (user_id,))
+                
+                user = cursor.fetchone()
+                return dict(user) if user else None
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération utilisateur {user_id}: {e}")
+            return None
+
+

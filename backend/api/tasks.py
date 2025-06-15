@@ -1150,10 +1150,12 @@ def api_assign_task(task_id):
             'error': str(e)
         }, 500
 
+
+
 @tasks_bp.route('/api/guests')
 @login_required
 def api_get_guests():
-    """API pour récupérer la liste des invités"""
+    """API pour récupérer la liste des invités - VERSION CORRIGÉE"""
     try:
         user_role = session.get('role')
         
@@ -1164,8 +1166,9 @@ def api_get_guests():
                 'error': 'Droits insuffisants'
             }, 403
         
-        # Récupérer tous les utilisateurs avec le rôle 'viewer'
-        guests = current_app.db.get_users_by_role('viewer')
+        # ✅ SOLUTION TEMPORAIRE : Utiliser get_users() et filtrer manuellement
+        all_users = current_app.db.get_users()
+        guests = [user for user in all_users if user.get('role') == 'viewer']
         
         return {
             'success': True,
@@ -1228,3 +1231,63 @@ def api_tasks_list():
             'success': False,
             'error': str(e)
         }
+
+
+@tasks_bp.route('/api/debug-users')
+@login_required
+def api_debug_users():
+    """Route de debug pour voir tous les utilisateurs"""
+    try:
+        all_users = current_app.db.get_users()
+        viewers = current_app.db.get_users_by_role('viewer')
+        
+        return {
+            'success': True,
+            'all_users': all_users,
+            'viewers_only': viewers,
+            'debug_info': {
+                'total_users': len(all_users),
+                'total_viewers': len(viewers)
+            }
+        }
+    except Exception as e:
+        return {'success': False, 'error': str(e)}, 500
+
+
+@tasks_bp.route('/api/debug-sql')
+@login_required
+def api_debug_sql():
+    """Route de debug SQL pour comprendre le problème - Version simplifiée"""
+    try:
+        results = {}
+        
+        # Test 1: Via la méthode get_users
+        results['all_users_method'] = current_app.db.get_users()
+        
+        # Test 2: Via la méthode get_users_by_role
+        results['viewers_method'] = current_app.db.get_users_by_role('viewer')
+        
+        # Test 3: Filtrer manuellement les viewers depuis get_users()
+        all_users = current_app.db.get_users()
+        manual_viewers = [user for user in all_users if user.get('role') == 'viewer']
+        results['viewers_manual_filter'] = manual_viewers
+        
+        # Test 4: Debug info
+        results['debug_info'] = {
+            'total_users': len(all_users),
+            'viewers_from_method': len(results['viewers_method']),
+            'viewers_from_manual': len(manual_viewers),
+            'roles_found': list(set(user.get('role') for user in all_users))
+        }
+        
+        return {
+            'success': True,
+            'debug_results': results
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur debug SQL: {e}")
+        return {
+            'success': False, 
+            'error': str(e)
+        }, 500

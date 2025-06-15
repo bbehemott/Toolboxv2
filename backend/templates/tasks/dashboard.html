@@ -759,11 +759,11 @@ function assignTaskToGuest() {
     const message = document.getElementById('assignMessage').value;
     
     if (!guestId) {
-        showAlert('Veuillez sélectionner un invité', 'warning');
+        showNotification('⚠️ Veuillez sélectionner un invité', 'warning');  // ← CHANGER showAlert en showNotification
         return;
     }
     
-    fetch(`/api/${taskId}/assign`, {
+    fetch(`/tasks/api/${taskId}/assign`, {  // ← Vérifiez que vous avez bien /tasks/ au début
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -776,17 +776,18 @@ function assignTaskToGuest() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showAlert(data.message, 'success');
+            showNotification('✅ ' + data.message, 'success');  // ← CHANGER showAlert en showNotification
             bootstrap.Modal.getInstance(document.getElementById('assignTaskModal')).hide();
         } else {
-            showAlert(data.error, 'danger');
+            showNotification('❌ ' + data.error, 'danger');  // ← CHANGER showAlert en showNotification
         }
     })
     .catch(error => {
         console.error('Erreur attribution:', error);
-        showAlert('Erreur lors de l\'attribution', 'danger');
+        showNotification('❌ Erreur lors de l\'attribution', 'danger');  // ← CHANGER showAlert en showNotification
     });
 }
+
 
 </script>
 
