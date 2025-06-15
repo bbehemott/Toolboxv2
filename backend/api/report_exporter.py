@@ -80,80 +80,291 @@ class ImprovedReportExporter:
         
         return reports
 
+
     def generate_txt_report(self, data):
-            """Génération rapport texte amélioré avec debugging"""
-            
-            # 🔍 DEBUGGING : Afficher exactement ce qui arrive dans le template
-            import logging
-            logger = logging.getLogger('toolbox.tasks')
-            
-            logger.info("="*60)
-            logger.info("🔍 DEBUGGING TEMPLATE DATA:")
-            logger.info(f"Data type: {type(data)}")
-            logger.info(f"Data keys: {list(data.keys()) if isinstance(data, dict) else 'Not dict'}")
-            
-            for key, value in data.items():
-                logger.info(f"  {key}: {type(value)} = {value}")
-                
-            # Vérifications spécifiques
-            logger.info(f"🔍 hosts_found: {data.get('hosts_found', 'MISSING')}")
-            logger.info(f"🔍 hosts_found type: {type(data.get('hosts_found', 'MISSING'))}")
-            logger.info(f"🔍 hosts_found length: {len(data.get('hosts_found', [])) if isinstance(data.get('hosts_found'), list) else 'Not list'}")
-            
-            logger.info(f"🔍 services: {data.get('services', 'MISSING')}")
-            logger.info(f"🔍 services type: {type(data.get('services', 'MISSING'))}")
-            logger.info(f"🔍 services length: {len(data.get('services', [])) if isinstance(data.get('services'), list) else 'Not list'}")
-            
-            logger.info(f"🔍 vulnerabilities: {data.get('vulnerabilities', 'MISSING')}")
-            logger.info(f"🔍 vulnerabilities type: {type(data.get('vulnerabilities', 'MISSING'))}")
-            logger.info(f"🔍 vulnerabilities length: {len(data.get('vulnerabilities', [])) if isinstance(data.get('vulnerabilities'), list) else 'Not list'}")
-            
-            logger.info("="*60)
-            
-            # Si les données sont vides, créer des données de test
-            if not data.get('hosts_found') and not data.get('services'):
-                logger.warning("⚠️ Données vides détectées - création de données de test")
-                data['hosts_found'] = [
-                    {
-                        'ip': '192.168.1.100',
-                        'address': '192.168.1.100',
-                        'status': 'up',
-                        'hostname': 'test-host',
-                        'os': 'Linux',
-                        'open_ports': ['22', '80', '443']
-                    }
-                ]
-                data['services'] = [
-                    {
-                        'name': 'SSH',
-                        'port': '22',
-                        'protocol': 'tcp',
-                        'state': 'open',
-                        'version': 'OpenSSH 7.4',
-                        'host': '192.168.1.100'
-                    },
-                    {
-                        'name': 'HTTP',
-                        'port': '80',
-                        'protocol': 'tcp',
-                        'state': 'open',
-                        'version': 'Apache 2.4',
-                        'host': '192.168.1.100'
-                    }
-                ]
-                data['vulnerabilities'] = [
-                    {
-                        'title': 'Service SSH détecté',
-                        'severity': 'Info',
-                        'cve': '',
-                        'port': '22',
-                        'description': 'Service SSH actif - vérifier la configuration',
-                        'host': '192.168.1.100'
-                    }
-                ]
-                data['total_hosts'] = 1
-            
-            template_str = """╔══════════════════════════════════════════════════════════════════╗
+        """Génération rapport texte adaptatif selon le type d'analyse"""
+        
+        # Déterminer le type d'analyse
+        scan_type = data.get('scan_type', 'Analyse générale')
+        
+        # Template adaptatif selon le type
+        if 'web_audit' in scan_type or 'audit_web' in scan_type:
+            template_str = self._get_web_audit_template()
+        elif 'forensic' in scan_type or 'forensique' in scan_type:
+            template_str = self._get_forensic_template()
+        elif 'brute_force' in scan_type or 'force_brute' in scan_type:
+            template_str = self._get_brute_force_template()
+        else:
+            template_str = self._get_discovery_template()
+        
+        from jinja2 import Template
+        template = Template(template_str)
+        return template.render(**data)
+    
+    def _get_web_audit_template(self):
+        """Template pour audit web"""
+        return """╔══════════════════════════════════════════════════════════════════╗
+    ║                      RAPPORT D'AUDIT WEB                        ║
+    ╚══════════════════════════════════════════════════════════════════╝
+    
+    📋 INFORMATIONS GÉNÉRALES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      • ID de tâche    : {{ task_id }}
+      • Date/Heure     : {{ timestamp }}
+      • Cible          : {{ target }}
+      • Type d'audit   : {{ scan_type }}
+      • Durée          : {{ duration }}
+    
+    📊 RÉSUMÉ EXÉCUTIF
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      • Applications web analysées : {{ total_hosts }}
+      • Services web identifiés    : {{ services|length }}
+      • Vulnérabilités détectées   : {{ vulnerabilities|length }}
+    
+    {% if hosts_found %}
+    🌐 APPLICATIONS WEB ANALYSÉES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% for host in hosts_found %}
+    ┌─ {{ host.ip or host.address }}
+    ├─ État         : {{ host.status }}
+    ├─ Type         : {{ host.os or 'Application Web' }}
+    └─ Ports web    : {{ host.open_ports|join(', ') if host.open_ports else 'HTTP/HTTPS' }}
+    
+    {% endfor %}
+    {% endif %}
+    
+    {% if services %}
+    🔧 SERVICES WEB IDENTIFIÉS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% for service in services %}
+    ┌─ {{ service.name }} (Port {{ service.port }})
+    ├─ Version      : {{ service.version or 'Non identifiée' }}
+    ├─ Protocole    : {{ service.protocol }}
+    ├─ État         : {{ service.state }}
+    └─ Serveur      : {{ service.host }}
+    
+    {% endfor %}
+    {% endif %}
+    
+    {% if vulnerabilities %}
+    🚨 VULNÉRABILITÉS WEB DÉTECTÉES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% for vuln in vulnerabilities %}
+    ┌─ {{ vuln.title }}
+    ├─ Criticité    : {{ vuln.severity }}
+    ├─ Source       : {{ vuln.source or 'Scanner Web' }}
+    ├─ Port affecté : {{ vuln.port }}
+    ├─ Serveur      : {{ vuln.host }}
+    └─ Description  : {{ vuln.description }}
+    
+    {% endfor %}
+    {% else %}
+    🚨 VULNÉRABILITÉS WEB DÉTECTÉES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ✅ Aucune vulnérabilité web critique détectée
+    {% endif %}
+    
+    🛡️ RECOMMANDATIONS WEB
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% if vulnerabilities %}
+    - Corriger en priorité les vulnérabilités critiques et élevées
+    - Mettre à jour les composants web avec des versions obsolètes
+    - Implémenter des mécanismes de protection (WAF, CSP)
+    - Auditer les configurations des serveurs web
+    {% else %}
+    - Bonne configuration de sécurité détectée
+    - Maintenir les bonnes pratiques actuelles
+    - Effectuer des audits réguliers pour détecter de nouvelles vulnérabilités
+    {% endif %}
+    
+    {% if raw_output %}
+    💻 DÉTAILS TECHNIQUES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {{ raw_output }}
+    {% endif %}
+    
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Audit web généré par la Toolbox Cybersécurité - {{ timestamp }}
+    """
+    
+    def _get_forensic_template(self):
+        """Template pour analyse forensique"""
+        return """╔══════════════════════════════════════════════════════════════════╗
+    ║                   RAPPORT D'ANALYSE FORENSIQUE                  ║
+    ╚══════════════════════════════════════════════════════════════════╝
+    
+    📋 INFORMATIONS GÉNÉRALES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      • ID de tâche    : {{ task_id }}
+      • Date/Heure     : {{ timestamp }}
+      • Échantillon    : {{ target }}
+      • Type d'analyse : {{ scan_type }}
+      • Durée          : {{ duration }}
+    
+    📊 RÉSUMÉ EXÉCUTIF
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      • Artefacts analysés         : {{ total_hosts }}
+      • Éléments identifiés        : {{ services|length }}
+      • Anomalies/Menaces détectées: {{ vulnerabilities|length }}
+    
+    {% if hosts_found %}
+    🔍 ARTEFACTS ANALYSÉS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% for host in hosts_found %}
+    ┌─ {{ host.ip or host.address }}
+    ├─ État         : {{ host.status }}
+    ├─ Type         : {{ host.os or 'Artefact numérique' }}
+    └─ Éléments     : {{ host.open_ports|length if host.open_ports else 0 }} éléments détectés
+    
+    {% endfor %}
+    {% endif %}
+    
+    {% if services %}
+    🔧 ÉLÉMENTS IDENTIFIÉS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% for service in services %}
+    ┌─ {{ service.name }}
+    ├─ Détails      : {{ service.version or 'Information non disponible' }}
+    ├─ Type         : {{ service.protocol }}
+    ├─ État         : {{ service.state }}
+    └─ Source       : {{ service.host }}
+    
+    {% endfor %}
+    {% endif %}
+    
+    {% if vulnerabilities %}
+    ⚠️ ANOMALIES ET MENACES DÉTECTÉES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% for vuln in vulnerabilities %}
+    ┌─ {{ vuln.title }}
+    ├─ Criticité    : {{ vuln.severity }}
+    ├─ Source       : {{ vuln.source or 'Analyse Forensique' }}
+    ├─ Référence    : {{ vuln.port if vuln.port != 'N/A' else 'Système' }}
+    ├─ Emplacement  : {{ vuln.host }}
+    └─ Description  : {{ vuln.description }}
+    
+    {% endfor %}
+    {% else %}
+    ⚠️ ANOMALIES ET MENACES DÉTECTÉES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ✅ Aucune menace critique détectée dans l'analyse
+    {% endif %}
+    
+    🛡️ RECOMMANDATIONS FORENSIQUES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% if vulnerabilities %}
+    - Analyser en priorité les menaces critiques identifiées
+    - Isoler les systèmes compromis si nécessaire
+    - Collecter des preuves supplémentaires pour investigation
+    - Documenter la chaîne de possession des preuves
+    {% else %}
+    - L'analyse n'a révélé aucune menace immédiate
+    - Conserver les artefacts pour référence future
+    - Poursuivre l'investigation si d'autres indices apparaissent
+    {% endif %}
+    
+    {% if raw_output %}
+    💻 DONNÉES TECHNIQUES DÉTAILLÉES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {{ raw_output }}
+    {% endif %}
+    
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Analyse forensique générée par la Toolbox Cybersécurité - {{ timestamp }}
+    """
+    
+    def _get_brute_force_template(self):
+        """Template pour force brute"""
+        return """╔══════════════════════════════════════════════════════════════════╗
+    ║                    RAPPORT DE FORCE BRUTE                       ║
+    ╚══════════════════════════════════════════════════════════════════╝
+    
+    📋 INFORMATIONS GÉNÉRALES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      • ID de tâche    : {{ task_id }}
+      • Date/Heure     : {{ timestamp }}
+      • Cible          : {{ target }}
+      • Type d'attaque : {{ scan_type }}
+      • Durée          : {{ duration }}
+    
+    📊 RÉSUMÉ EXÉCUTIF
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      • Systèmes testés            : {{ total_hosts }}
+      • Services analysés          : {{ services|length }}
+      • Credentials découverts     : {{ vulnerabilities|selectattr('severity', 'equalto', 'Critical')|list|length }}
+    
+    {% if hosts_found %}
+    🎯 SYSTÈMES TESTÉS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% for host in hosts_found %}
+    ┌─ {{ host.ip or host.address }}
+    ├─ État         : {{ host.status }}
+    ├─ Système      : {{ host.os or 'Système testé' }}
+    └─ Services     : {{ host.open_ports|join(', ') if host.open_ports else 'N/A' }}
+    
+    {% endfor %}
+    {% endif %}
+    
+    {% if services %}
+    🔧 SERVICES ANALYSÉS
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% for service in services %}
+    ┌─ {{ service.name }} (Port {{ service.port }})
+    ├─ État de test : {{ service.state }}
+    ├─ Protocole    : {{ service.protocol }}
+    ├─ Résultat     : {{ service.version or 'Test effectué' }}
+    └─ Système      : {{ service.host }}
+    
+    {% endfor %}
+    {% endif %}
+    
+    {% if vulnerabilities %}
+    🔓 CREDENTIALS ET FAILLES DÉCOUVERTES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% for vuln in vulnerabilities %}
+    ┌─ {{ vuln.title }}
+    ├─ Criticité    : {{ vuln.severity }}
+    {% if vuln.severity == 'Critical' %}├─ ⚠️ ACCÈS    : Credentials faibles détectés{% endif %}
+    ├─ Service      : Port {{ vuln.port }}
+    ├─ Système      : {{ vuln.host }}
+    └─ Détails      : {{ vuln.description }}
+    
+    {% endfor %}
+    {% else %}
+    🔓 CREDENTIALS ET FAILLES DÉCOUVERTES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ✅ Aucun credential faible détecté - Services résistants aux attaques
+    {% endif %}
+    
+    🛡️ RECOMMANDATIONS SÉCURITÉ
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {% set critical_vulns = vulnerabilities|selectattr('severity', 'equalto', 'Critical')|list %}
+    {% if critical_vulns %}
+    - 🚨 URGENT: Changer immédiatement les mots de passe faibles découverts
+    - Implémenter une politique de mots de passe robuste
+    - Activer l'authentification multi-facteurs (2FA/MFA)
+    - Surveiller les tentatives de connexion suspectes
+    - Considérer le blocage IP après échecs multiples
+    {% else %}
+    - Excellente résistance aux attaques par force brute
+    - Maintenir les politiques de sécurité actuelles
+    - Effectuer des tests réguliers pour vérifier la robustesse
+    - Sensibiliser les utilisateurs aux bonnes pratiques
+    {% endif %}
+    
+    {% if raw_output %}
+    💻 DÉTAILS TECHNIQUES
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {{ raw_output }}
+    {% endif %}
+    
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Test de force brute généré par la Toolbox Cybersécurité - {{ timestamp }}
+    """
+    
+    def _get_discovery_template(self):
+        """Template pour découverte réseau (existant)"""
+        return """╔══════════════════════════════════════════════════════════════════╗
     ║                    RAPPORT DE DÉCOUVERTE RÉSEAU                  ║
     ╚══════════════════════════════════════════════════════════════════╝
     
@@ -182,11 +393,6 @@ class ImprovedReportExporter:
     └─ Ports ouverts: {{ host.open_ports|join(', ') if host.open_ports else 'Aucun' }}
     
     {% endfor %}
-    {% else %}
-    🖥️  HÔTES DÉCOUVERTS
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    ⚠️ Aucun hôte détecté ou données non disponibles
-    
     {% endif %}
     
     {% if services %}
@@ -200,11 +406,6 @@ class ImprovedReportExporter:
     └─ Hôte         : {{ service.host }}
     
     {% endfor %}
-    {% else %}
-    🔧 SERVICES IDENTIFIÉS
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    ⚠️ Aucun service identifié
-    
     {% endif %}
     
     {% if vulnerabilities %}
@@ -219,21 +420,6 @@ class ImprovedReportExporter:
     └─ Description  : {{ vuln.description }}
     
     {% endfor %}
-    {% else %}
-    🚨 VULNÉRABILITÉS DÉTECTÉES
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    ✅ Aucune vulnérabilité critique détectée
-    
-    {% endif %}
-    
-    {% if raw_output %}
-    💻 SORTIE BRUTE
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    {{ raw_output }}
-    {% else %}
-    💻 SORTIE BRUTE
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    ⚠️ Aucune sortie brute disponible
     {% endif %}
     
     🛡️  RECOMMANDATIONS
@@ -248,18 +434,15 @@ class ImprovedReportExporter:
     {% endif %}
     - Effectuer des scans réguliers pour maintenir la visibilité
     
+    {% if raw_output %}
+    💻 SORTIE BRUTE
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    {{ raw_output }}
+    {% endif %}
+    
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     Rapport généré par la Toolbox Cybersécurité - {{ timestamp }}
-            """
-            
-            from jinja2 import Template
-            template = Template(template_str)
-            result = template.render(**data)
-            
-            logger.info("🔍 Template result preview:")
-            logger.info(result[:500] + "..." if len(result) > 500 else result)
-            
-            return result
+    """
 
 
     def generate_pdf_report(self, data):
