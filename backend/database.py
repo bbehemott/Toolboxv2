@@ -178,26 +178,40 @@ class DatabaseManager:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                # Supprimer d'abord les résultats de modules
+                
+                # 1. Supprimer d'abord les assignations de tâches
+                cursor.execute('''
+                    DELETE FROM task_assignments 
+                    WHERE task_id IN (
+                        SELECT task_id FROM tasks 
+                        WHERE status = 'completed'
+                    )
+                ''')
+                assignments_deleted = cursor.rowcount
+                logger.info(f"🗑️ {assignments_deleted} assignations supprimées")
+                
+                # 2. Supprimer les résultats de modules
                 cursor.execute('''
                     DELETE FROM module_results 
                     WHERE task_id IN (
                         SELECT task_id FROM tasks 
-                        WHERE status IN ('completed', 'failed', 'cancelled')
+                        WHERE status = 'completed'
                     )
                 ''')
                 modules_deleted = cursor.rowcount
+                logger.info(f"🗑️ {modules_deleted} résultats de modules supprimés")
                 
-                # Puis supprimer les tâches
+                # 3. Enfin supprimer les tâches
                 cursor.execute('''
                     DELETE FROM tasks 
-                    WHERE status IN ('completed', 'failed', 'cancelled')
+                    WHERE status = 'completed'
                 ''')
                 tasks_deleted = cursor.rowcount
                 
                 conn.commit()
-                logger.info(f"🗑️ Purge complète: {tasks_deleted} tâches + {modules_deleted} résultats supprimés")
+                logger.info(f"🗑️ Purge complète: {tasks_deleted} tâches + {modules_deleted} résultats + {assignments_deleted} assignations supprimés")
                 return tasks_deleted
+                
         except Exception as e:
             logger.error(f"❌ Erreur purge complète: {e}")
             return 0

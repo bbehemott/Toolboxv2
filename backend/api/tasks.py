@@ -6,6 +6,7 @@ from .report_exporter import ImprovedReportExporter
 import os
 import logging
 import json
+import psycopg2.extras
 
 logger = logging.getLogger('toolbox.tasks')
 
@@ -1291,3 +1292,117 @@ def api_debug_sql():
             'success': False, 
             'error': str(e)
         }, 500
+
+
+@tasks_bp.route('/api/cleanup', methods=['POST'])
+@login_required
+def api_cleanup_tasks():
+    """API pour purger les tâches terminées"""
+    try:
+        user_role = session.get('role')
+        
+        # Vérifier les permissions (admin seulement)
+        if user_role != 'admin':
+            return {
+                'success': False,
+                'error': 'Droits insuffisants - admin requis'
+            }, 403
+        
+        data = request.get_json()
+        days = data.get('days', 0)
+        
+        if days == 0:
+            # Purge complète
+            count = current_app.db.cleanup_all_completed_tasks()
+            message = f"{count} tâches terminées supprimées définitivement"
+        else:
+            # Masquer les anciennes tâches
+            count = current_app.db.cleanup_old_tasks(days)
+            message = f"{count} tâches anciennes masquées (>{days} jours)"
+        
+        return {
+            'success': True,
+            'message': message,
+            'count': count
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur purge tâches: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
+@tasks_bp.route('/api/task/<task_id>/hide-from-history', methods=['POST'])
+@login_required
+def api_hide_task_from_history(task_id):
+    """API pour masquer une tâche spécifique de l'historique"""
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role', 'user')
+        
+        # Vérifier les droits d'accès
+        task_manager = TaskManager(current_app.db)
+        if not task_manager.can_user_access_task(task_id, user_id, user_role):
+            return {
+                'success': False,
+                'error': 'Accès refusé'
+            }, 403
+        
+        # Masquer la tâche
+        success = current_app.db.hide_task(task_id)
+        
+        if success:
+            return {
+                'success': True,
+                'message': 'Tâche masquée de l\'historique'
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Tâche non trouvée'
+            }, 404
+            
+    except Exception as e:
+        logger.error(f"Erreur masquage tâche {task_id}: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
+@tasks_bp.route('/api/debug-statuses')
+@login_required
+def api_debug_statuses():
+    """Debug : voir les statuts des tâches"""
+    try:
+        with current_app.db.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Compter les tâches par statut
+            cursor.execute('''
+                SELECT status, COUNT(*) as count
+                FROM tasks 
+                GROUP BY status
+                ORDER BY status
+            ''')
+            status_counts = [dict(row) for row in cursor.fetchall()]
+            
+            # Exemples de tâches
+            cursor.execute('''
+                SELECT task_id, task_name, status, started_at, completed_at
+                FROM tasks 
+                ORDER BY started_at DESC 
+                LIMIT 10
+            ''')
+            sample_tasks = [dict(row) for row in cursor.fetchall()]
+            
+            return {
+                'success': True,
+                'status_counts': status_counts,
+                'sample_tasks': sample_tasks
+            }
+            
+    except Exception as e:
+        return {'success': False, 'error': str(e)}, 500
