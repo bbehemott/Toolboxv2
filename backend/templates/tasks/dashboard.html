@@ -562,11 +562,18 @@ function updateTasksList(tasks) {
                 <td>
                     <div class="btn-group btn-group-sm" role="group">
                         <a href="/tasks/${task.task_id}/status" class="btn btn-outline-info" title="Voir détails">👁️</a>
-                        {% if current_user.role in ['admin', 'pentester'] %}
+        `;
+        
+        // Ajouter le bouton d'attribution seulement pour admin/pentester
+        if (userRole === 'admin' || userRole === 'pentester') {
+            html += `
                         <button class="btn btn-outline-success" 
                                 onclick="showAssignTaskModal('${task.task_id}')" 
                                 title="Attribuer à un invité">📤</button>
-                        {% endif %}
+            `;
+        }
+        
+        html += `
                         <button class="btn btn-outline-warning" onclick="hideTaskFromHistory('${task.task_id}')" title="Supprimer">🗑️</button>
                     </div>
                 </td>
@@ -582,6 +589,7 @@ function updateTasksList(tasks) {
     
     listContainer.innerHTML = html;
 }
+
 
 function hideTaskFromHistory(taskId) {
     console.log(`🗑️ Masquage tâche: ${taskId}`);
@@ -779,5 +787,38 @@ function assignTaskToGuest() {
 }
 
 </script>
+
+<div class="modal fade" id="assignTaskModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">📤 Attribuer la tâche à un invité</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="assignTaskForm">
+                    <div class="mb-3">
+                        <label class="form-label">Sélectionner un invité :</label>
+                        <select class="form-select" id="guestSelect" required>
+                            <option value="">Choisir un invité...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Message (optionnel) :</label>
+                        <textarea class="form-control" id="assignMessage" 
+                                  placeholder="Instructions pour l'invité..." rows="3"></textarea>
+                    </div>
+                    <input type="hidden" id="taskToAssign">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-success" onclick="assignTaskToGuest()">
+                    📤 Attribuer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}

@@ -39,15 +39,6 @@
               </a>
               <ul class="dropdown-menu">
                 <li><a class="dropdown-item" href="{{ url_for('tasks.tasks_dashboard') }}">📊 Dashboard Tâches</a></li>
-                {% if current_user and current_user.is_authenticated %}
-                    {% if current_user.role == 'viewer' %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('main.assigned_tasks') }}">
-                            📋 Mes tâches
-                        </a>
-                    </li>
-                    {% endif %}
-                {% endif %}
                 <li><a class="dropdown-item" href="{{ url_for('monitoring.monitoring_dashboard') }}">⚙️ Dashboard Système</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('security_dashboard.security_dashboard') }}">🛡️ Dashboard Sécurité</a></li>
                 <li><a class="dropdown-item" href="http://localhost:5555" target="_blank">🌸 Flower (Celery)</a></li>
@@ -57,6 +48,17 @@
                 <li><a class="dropdown-item" href="{{ url_for('tasks.test_task_page') }}">🧪 Test Celery</a></li>
               </ul>
             </li>
+
+            {% if current_user and current_user.is_authenticated %}
+                {% if current_user.role == 'viewer' %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('main.assigned_tasks') }}">
+                        📋 Mes tâches
+                    </a>
+                </li>
+                {% endif %}
+            {% endif %}
+
             
             <!-- OUTILS ET CONFIG -->
             <li class="nav-item dropdown">
