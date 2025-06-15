@@ -156,6 +156,8 @@
 
 <script>
 let refreshInterval;
+const userRole = '{{ current_user.role }}';
+console.log('🔑 Rôle utilisateur:', userRole);
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Dashboard chargé - Initialisation...');

@@ -29,7 +29,12 @@ def tasks_dashboard():
         
         logger.info(f"Dashboard tâches: {len(tasks)} tâches trouvées pour user {user_id} (role: {user_role})")
         
-        return render_template('tasks/dashboard.html', tasks=tasks)
+        # AJOUTER CETTE LIGNE ⬇️
+        current_user = current_app.auth.get_current_user()
+        
+        return render_template('tasks/dashboard.html', 
+                             tasks=tasks, 
+                             current_user=current_user)  # ← AJOUTER current_user
         
     except Exception as e:
         logger.error(f"Erreur dashboard tâches: {e}")
