@@ -562,6 +562,11 @@ function updateTasksList(tasks) {
                 <td>
                     <div class="btn-group btn-group-sm" role="group">
                         <a href="/tasks/${task.task_id}/status" class="btn btn-outline-info" title="Voir détails">👁️</a>
+                        {% if current_user.role in ['admin', 'pentester'] %}
+                        <button class="btn btn-outline-success" 
+                                onclick="showAssignTaskModal('${task.task_id}')" 
+                                title="Attribuer à un invité">📤</button>
+                        {% endif %}
                         <button class="btn btn-outline-warning" onclick="hideTaskFromHistory('${task.task_id}')" title="Supprimer">🗑️</button>
                     </div>
                 </td>
@@ -709,6 +714,70 @@ function showNotification(message, type) {
 window.addEventListener('beforeunload', function() {
     stopAutoRefresh();
 });
+
+// Ajout dans le dashboard des tâches
+function showAssignTaskModal(taskId) {
+    document.getElementById('taskToAssign').value = taskId;
+    
+    // Charger la liste des invités
+    fetch('/api/guests')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const select = document.getElementById('guestSelect');
+                select.innerHTML = '<option value="">Choisir un invité...</option>';
+                
+                data.guests.forEach(guest => {
+                    const option = document.createElement('option');
+                    option.value = guest.id;
+                    option.textContent = guest.username;
+                    select.appendChild(option);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Erreur chargement invités:', error);
+            showAlert('Erreur lors du chargement des invités', 'danger');
+        });
+    
+    new bootstrap.Modal(document.getElementById('assignTaskModal')).show();
+}
+
+function assignTaskToGuest() {
+    const taskId = document.getElementById('taskToAssign').value;
+    const guestId = document.getElementById('guestSelect').value;
+    const message = document.getElementById('assignMessage').value;
+    
+    if (!guestId) {
+        showAlert('Veuillez sélectionner un invité', 'warning');
+        return;
+    }
+    
+    fetch(`/api/${taskId}/assign`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            guest_id: parseInt(guestId),
+            message: message
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(data.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('assignTaskModal')).hide();
+        } else {
+            showAlert(data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Erreur attribution:', error);
+        showAlert('Erreur lors de l\'attribution', 'danger');
+    });
+}
+
 </script>
 
 {% endblock %}

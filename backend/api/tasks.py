@@ -1083,3 +1083,100 @@ def _extract_raw_structured(result_data):
     return '\n'.join(parts) if parts else 'Aucune sortie disponible'
 
 
+@tasks_bp.route('/api/<task_id>/assign', methods=['POST'])
+@login_required
+def api_assign_task(task_id):
+    """API pour attribuer une tâche à un invité"""
+    try:
+        user_role = session.get('role')
+        user_id = session.get('user_id')
+        
+        # Vérifier les permissions (admin ou pentester)
+        if user_role not in ['admin', 'pentester']:
+            return {
+                'success': False,
+                'error': 'Droits insuffisants'
+            }, 403
+        
+        data = request.get_json()
+        guest_id = data.get('guest_id')
+        message = data.get('message', '')
+        
+        if not guest_id:
+            return {
+                'success': False,
+                'error': 'ID invité manquant'
+            }, 400
+        
+        # Vérifier que la tâche existe et appartient à l'utilisateur
+        task_manager = TaskManager(current_app.db)
+        if not task_manager.can_user_access_task(task_id, user_id, user_role):
+            return {
+                'success': False,
+                'error': 'Tâche non accessible'
+            }, 403
+        
+        # Vérifier que le destinataire est bien un invité
+        guest_user = current_app.db.get_user_by_id(guest_id)
+        if not guest_user or guest_user.get('role') != 'viewer':
+            return {
+                'success': False,
+                'error': 'Utilisateur invité invalide'
+            }, 400
+        
+        # Attribuer la tâche
+        success = current_app.db.assign_task_to_user(task_id, guest_id, user_id, message)
+        
+        if success:
+            return {
+                'success': True,
+                'message': f'Tâche attribuée à {guest_user.get("username")}'
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Erreur lors de l\'attribution'
+            }, 500
+            
+    except Exception as e:
+        logger.error(f"Erreur attribution tâche {task_id}: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+@tasks_bp.route('/api/guests')
+@login_required
+def api_get_guests():
+    """API pour récupérer la liste des invités"""
+    try:
+        user_role = session.get('role')
+        
+        # Vérifier les permissions
+        if user_role not in ['admin', 'pentester']:
+            return {
+                'success': False,
+                'error': 'Droits insuffisants'
+            }, 403
+        
+        # Récupérer tous les utilisateurs avec le rôle 'viewer'
+        guests = current_app.db.get_users_by_role('viewer')
+        
+        return {
+            'success': True,
+            'guests': [
+                {
+                    'id': guest['id'],
+                    'username': guest['username'],
+                    'last_login': guest.get('last_login')
+                }
+                for guest in guests
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur récupération invités: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500

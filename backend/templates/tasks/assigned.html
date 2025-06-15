@@ -1,0 +1,55 @@
+<!-- backend/templates/tasks/assigned.html -->
+{% extends "base.html" %}
+{% block title %}Mes tâches attribuées{% endblock %}
+{% block content %}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1>📋 Mes tâches attribuées</h1>
+            <p class="text-muted">Tâches qui vous ont été attribuées par les administrateurs</p>
+        </div>
+    </div>
+
+    {% if tasks %}
+    <div class="row">
+        {% for task in tasks %}
+        <div class="col-md-6 mb-3">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h6 class="mb-0">{{ task.task_name }}</h6>
+                    <span class="badge bg-info">{{ task.task_type }}</span>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">
+                        <strong>Cible :</strong> {{ task.target }}<br>
+                        <strong>Attribuée par :</strong> {{ task.assigned_by_username }}<br>
+                        <strong>Date :</strong> {{ task.assigned_at }}
+                    </p>
+                    
+                    {% if task.message %}
+                    <div class="alert alert-info">
+                        <strong>Instructions :</strong><br>
+                        {{ task.message }}
+                    </div>
+                    {% endif %}
+                    
+                    <div class="btn-group" role="group">
+                        <a href="/tasks/{{ task.task_id }}/status" 
+                           class="btn btn-primary btn-sm">👁️ Voir détails</a>
+                        <a href="/tasks/{{ task.task_id }}/results" 
+                           class="btn btn-success btn-sm">📊 Résultats</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center">
+        <p class="text-muted">Aucune tâche ne vous a été attribuée pour le moment.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

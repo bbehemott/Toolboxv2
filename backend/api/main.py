@@ -395,3 +395,22 @@ def rotate_encryption_key():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@main_bp.route('/assigned-tasks')
+@login_required
+def assigned_tasks():
+    """Page des tâches attribuées (pour les invités)"""
+    user_id = session.get('user_id')
+    user_role = session.get('role')
+    
+    if user_role != 'viewer':
+        flash('Cette page est réservée aux invités', 'warning')
+        return redirect(url_for('main.dashboard'))
+    
+    try:
+        assigned_tasks = current_app.db.get_assigned_tasks(user_id)
+        return render_template('tasks/assigned.html', tasks=assigned_tasks)
+    except Exception as e:
+        logger.error(f"Erreur tâches attribuées: {e}")
+        return render_template('tasks/assigned.html', tasks=[])

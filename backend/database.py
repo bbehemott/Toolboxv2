@@ -111,13 +111,28 @@ class DatabaseManager:
                 )
             ''')
             
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS task_assignments (
+                    id SERIAL PRIMARY KEY,
+                    task_id VARCHAR(255) NOT NULL REFERENCES tasks(task_id),
+                    assigned_to_user_id INTEGER NOT NULL REFERENCES users(id),
+                    assigned_by_user_id INTEGER NOT NULL REFERENCES users(id),
+                    message TEXT,
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status VARCHAR(20) DEFAULT 'pending',
+                    viewed_at TIMESTAMP,
+                    UNIQUE(task_id, assigned_to_user_id)
+                )
+            ''')
             # Index pour performances
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_module_results_task_id ON module_results(task_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_module_results_module_name ON module_results(module_name)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_hidden ON tasks(hidden)')
-            
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_task_assignments_assigned_to ON task_assignments(assigned_to_user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_task_assignments_assigned_by ON task_assignments(assigned_by_user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_task_assignments_status ON task_assignments(status)')
             conn.commit()
             logger.info("✅ Base de données PostgreSQL initialisée")
     
@@ -652,4 +667,59 @@ class DatabaseManager:
                     
         except Exception as e:
             logger.error(f"❌ Erreur récupération results: {e}")
+            return []
+
+
+    def assign_task_to_user(self, task_id: str, assigned_to_user_id: int, 
+                           assigned_by_user_id: int, message: str = '') -> bool:
+        """Attribuer une tâche à un utilisateur"""
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute('''
+                INSERT INTO task_assignments 
+                (task_id, assigned_to_user_id, assigned_by_user_id, message)
+                VALUES (?, ?, ?, ?)
+            ''', (task_id, assigned_to_user_id, assigned_by_user_id, message))
+            
+            self.connection.commit()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur attribution tâche: {e}")
+            return False
+    
+    def get_assigned_tasks(self, user_id: int) -> List[Dict]:
+        """Récupérer les tâches attribuées à un utilisateur"""
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute('''
+                SELECT ta.*, t.*, u.username as assigned_by_username
+                FROM task_assignments ta
+                JOIN tasks t ON ta.task_id = t.task_id
+                JOIN users u ON ta.assigned_by_user_id = u.id
+                WHERE ta.assigned_to_user_id = ?
+                ORDER BY ta.assigned_at DESC
+            ''', (user_id,))
+            
+            return [dict(row) for row in cursor.fetchall()]
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération tâches attribuées: {e}")
+            return []
+    
+    def get_users_by_role(self, role: str) -> List[Dict]:
+        """Récupérer tous les utilisateurs avec un rôle spécifique"""
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute('''
+                SELECT id, username, role, created_at, last_login
+                FROM users 
+                WHERE role = ?
+                ORDER BY username
+            ''', (role,))
+            
+            return [dict(row) for row in cursor.fetchall()]
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération utilisateurs par rôle: {e}")
             return []
