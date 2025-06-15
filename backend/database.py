@@ -710,16 +710,17 @@ class DatabaseManager:
     def get_users_by_role(self, role: str) -> List[Dict]:
         """Récupérer tous les utilisateurs avec un rôle spécifique"""
         try:
-            cursor = self.connection.cursor()
-            cursor.execute('''
-                SELECT id, username, role, created_at, last_login
-                FROM users 
-                WHERE role = ?
-                ORDER BY username
-            ''', (role,))
-            
-            return [dict(row) for row in cursor.fetchall()]
-            
+            with self.get_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute('''
+                    SELECT id, username, role, created_at, last_login
+                    FROM users 
+                    WHERE role = %s  -- ✅ CORRIGER: %s au lieu de ?
+                    ORDER BY username
+                ''', (role,))
+                
+                return [dict(row) for row in cursor.fetchall()]
+                
         except Exception as e:
             logger.error(f"Erreur récupération utilisateurs par rôle: {e}")
             return []

@@ -730,7 +730,7 @@ function showAssignTaskModal(taskId) {
     document.getElementById('taskToAssign').value = taskId;
     
     // Charger la liste des invités
-    fetch('/api/guests')
+    fetch('/tasks/api/guests')
         .then(response => response.json())
         .then(data => {
             if (data.success) {

@@ -1185,3 +1185,46 @@ def api_get_guests():
             'success': False,
             'error': str(e)
         }, 500
+
+
+@tasks_bp.route('/api/real-stats')
+@login_required
+def api_real_stats():
+    """API pour les statistiques en temps réel"""
+    try:
+        stats = current_app.db.get_stats()
+        return {
+            'success': True,
+            'stats': stats or {}
+        }
+    except Exception as e:
+        logger.error(f"Erreur stats: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+@tasks_bp.route('/api/list')
+@login_required  
+def api_tasks_list():
+    """API pour la liste des tâches"""
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+        limit = request.args.get('limit', 20, type=int)
+        
+        if user_role == 'admin':
+            tasks = current_app.db.get_tasks(include_hidden=False, limit=limit)
+        else:
+            tasks = current_app.db.get_tasks(user_id=user_id, include_hidden=False, limit=limit)
+        
+        return {
+            'success': True,
+            'tasks': tasks or []
+        }
+    except Exception as e:
+        logger.error(f"Erreur liste tâches: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
